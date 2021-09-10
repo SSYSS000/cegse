@@ -155,6 +155,22 @@ int sf_put_i64(FILE *stream, i64 value);
 int sf_get_i64(FILE *restrict stream, i64 *restrict value);
 
 /*
+ * Write a 32-bit floating point to stream.
+ *
+ * On success, return nonnegative integer.
+ * On file error, return -1.
+ */
+int sf_put_f32(FILE *stream, f32 value);
+
+/*
+ * Read a 32-bit floating point from stream.
+ *
+ * On success, return nonnegative integer.
+ * On file error or EOF, return -1.
+ */
+int sf_get_f32(FILE *restrict stream, f32 *restrict value);
+
+/*
  * Write a FILETIME to stream.
  *
  * On success, return nonnegative integer.

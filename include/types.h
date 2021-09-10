@@ -34,6 +34,8 @@ typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
+typedef float f32;
+
 /*
  * See: https://docs.microsoft.com/en-us/office/client-developer/outlook/mapi/filetime
  */

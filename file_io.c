@@ -135,6 +135,22 @@ int sf_get_i64(FILE *restrict stream, i64 *restrict value)
 	return sf_get_u64(stream, (u64 *)value);
 }
 
+int sf_put_f32(FILE *stream, f32 value)
+{
+	if (fwrite(&value, sizeof(value), 1, stream) < 1)
+		return -1;
+
+	return 0;
+}
+
+int sf_get_f32(FILE *restrict stream, f32 *restrict value)
+{
+	if (fread(value, sizeof(*value), 1, stream) < 1)
+		return -1;
+
+	return 0;
+}
+
 int sf_put_filetime(FILE *stream, FILETIME value)
 {
 	return sf_put_u64(stream, value);
