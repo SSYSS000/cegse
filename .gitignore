@@ -1,0 +1,6 @@
+# Build files
+cegse
+*.o
+
+# IDE project files
+*.kdev4
