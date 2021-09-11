@@ -31,8 +31,7 @@ int serialize_file_header(struct sf_stream *restrict stream,
 			  const struct file_header *restrict header);
 
 /*
- * Deserialize a file header from stream. The header is expected
- * to be zero-initialized.
+ * Deserialize a file header from stream.
  *
  * On success, return nonnegative integer.
  * On failure, return -1.
