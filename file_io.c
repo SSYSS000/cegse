@@ -250,3 +250,24 @@ int sf_get_s(struct sf_stream *restrict stream, char **restrict dest)
 	*dest = string;
 	return len;
 }
+
+int sf_get_ns(struct sf_stream *restrict stream, char *restrict dest,
+	      size_t dest_size)
+{
+	u16 len;
+
+	if (sf_get_u16(stream, &len) < 0)
+		return -1;
+
+	if (dest_size < len + 1u) {
+		stream->status = SF_ESIZE;
+		return -1;
+	}
+
+	if (sf_read(stream, dest, len) < 0) {
+		return -1;
+	}
+
+	dest[len] = '\0';
+	return len;
+}

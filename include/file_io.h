@@ -254,4 +254,17 @@ int sf_put_s(struct sf_stream *restrict stream, const char *restrict string);
  */
 int sf_get_s(struct sf_stream *restrict stream, char **restrict dest);
 
+/*
+ * Read a string, prefixed by its 16-bit length, from stream to dest.
+ *
+ * If the string cannot fit to dest along with its
+ * terminating null-byte (strlen+1 > dest_size), the function fails and
+ * SF_ESIZE is set. The contents of dest remain unchanged, too.
+ *
+ * On success, return the length of the string.
+ * On failure, set error status and return a negative integer.
+ */
+int sf_get_ns(struct sf_stream *restrict stream, char *restrict dest,
+	      size_t dest_size);
+
 #endif // CEGSE_FILE_IO_H
