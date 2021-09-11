@@ -187,7 +187,7 @@ int sf_put_vsval(struct sf_stream *stream, u32 value)
 
 	value = value << 2u | 2u;
 	for (i = 0u; i < 3u; ++i) {
-		if (sf_put_u8(stream, value >> i * 8u) == -1)
+		if (sf_put_u8(stream, value >> i * 8u) < 0)
 			return -1;
 	}
 
@@ -203,7 +203,7 @@ int sf_get_vsval(struct sf_stream *restrict stream, u32 *restrict value)
 	i = 0u;
 	*value = 0u;
 	do {
-		if (sf_get_u8(stream, &byte) == -1)
+		if (sf_get_u8(stream, &byte) < 0)
 			return -1;
 
 		*value |= byte << i * 8u;
