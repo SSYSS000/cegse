@@ -60,4 +60,36 @@ int serialize_file_header(struct sf_stream *restrict stream,
 int deserialize_file_header(struct sf_stream *restrict stream,
 			    struct file_header *restrict header);
 
+struct file_location_table {
+	u32 form_id_array_count_offset;
+	u32 unknown_table_3_offset;
+	u32 global_data_table_1_offset;
+	u32 global_data_table_2_offset;
+	u32 change_forms_offset;
+	u32 global_data_table_3_offset;
+	u32 global_data_table_1_count;
+	u32 global_data_table_2_count;
+	u32 global_data_table_3_count;
+	u32 change_form_count;
+};
+
+/*
+ * Serialize a file location table to stream.
+ *
+ * On success, return a nonnegative integer.
+ * On failure, return a negative integer.
+ */
+int serialize_file_location_table(
+	struct sf_stream *restrict stream,
+	const struct file_location_table *restrict table);
+
+/*
+ * Deserialize a file location table from stream.
+ *
+ * On success, return a nonnegative integer.
+ * On failure, return a negative integer.
+ */
+int deserialize_file_location_table(struct sf_stream *restrict stream,
+				    struct file_location_table *restrict table);
+
 #endif // CEGSE_SAVE_FILE

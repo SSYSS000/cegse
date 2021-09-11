@@ -75,3 +75,51 @@ int deserialize_file_header(struct sf_stream *restrict stream,
 
 	return 0;
 }
+
+int serialize_file_location_table(
+	struct sf_stream *restrict stream,
+	const struct file_location_table *restrict table)
+{
+	sf_put_u32(stream, table->form_id_array_count_offset);
+	sf_put_u32(stream, table->unknown_table_3_offset);
+	sf_put_u32(stream, table->global_data_table_1_offset);
+	sf_put_u32(stream, table->global_data_table_2_offset);
+	sf_put_u32(stream, table->change_forms_offset);
+	sf_put_u32(stream, table->global_data_table_3_offset);
+	sf_put_u32(stream, table->global_data_table_1_count);
+	sf_put_u32(stream, table->global_data_table_2_count);
+	sf_put_u32(stream, table->global_data_table_3_count);
+	sf_put_u32(stream, table->change_form_count);
+
+	// Write unused bytes.
+	for (int i = 0; i < 15; ++i)
+		sf_put_u32(stream, 0u);
+
+	if (stream->status != SF_OK)
+		return -1;
+
+	return 0;
+}
+
+int deserialize_file_location_table(struct sf_stream *restrict stream,
+				    struct file_location_table *restrict table)
+{
+	sf_get_u32(stream, &table->form_id_array_count_offset);
+	sf_get_u32(stream, &table->unknown_table_3_offset);
+	sf_get_u32(stream, &table->global_data_table_1_offset);
+	sf_get_u32(stream, &table->global_data_table_2_offset);
+	sf_get_u32(stream, &table->change_forms_offset);
+	sf_get_u32(stream, &table->global_data_table_3_offset);
+	sf_get_u32(stream, &table->global_data_table_1_count);
+	sf_get_u32(stream, &table->global_data_table_2_count);
+	sf_get_u32(stream, &table->global_data_table_3_count);
+	sf_get_u32(stream, &table->change_form_count);
+
+	// Skip unused.
+	fseek(stream->stream, sizeof(u32[15]), SEEK_CUR);
+
+	if (stream->status != SF_OK)
+		return -1;
+
+	return 0;
+}
