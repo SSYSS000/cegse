@@ -214,6 +214,7 @@ int sf_put_s(FILE *restrict stream, const char *restrict string);
 /*
  * Read a string, prefixed by its 16-bit length, from stream. The caller is
  * responsible for freeing the string mallocated in dest.
+ * The contents of dest remain unchanged on error.
  *
  * On success, return the length of the string.
  * On file error or EOF, return -1.
