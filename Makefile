@@ -3,7 +3,8 @@ CFLAGS = -Iinclude -Wall -Wextra -g
 LIBS =
 
 OBJS = 	main.o \
-	file_io.o
+	file_io.o \
+	save_file.o
 
 TARGET = cegse
 
