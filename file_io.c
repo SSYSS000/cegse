@@ -25,143 +25,158 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <string.h>
 #include "file_io.h"
 
-int sf_put_u8(FILE *stream, u8 value)
+int sf_write(struct sf_stream *restrict stream, const void *restrict src,
+	     size_t size)
 {
-	if (fwrite(&value, sizeof(value), 1, stream) < 1)
+	size_t n_written;
+	if (stream->status != SF_OK)
 		return -1;
+
+	n_written = fwrite(src, 1u, size, stream->stream);
+	if (n_written < size) {
+		if (feof(stream->stream))
+			stream->status = SF_EOF;
+		else
+			stream->status = SF_EFILE;
+
+		return -1;
+	}
 
 	return 0;
 }
 
-int sf_get_u8(FILE *restrict stream, u8 *restrict value)
+int sf_read(struct sf_stream *restrict stream, void *restrict dest, size_t size)
 {
-	if (fread(value, sizeof(*value), 1, stream) < 1)
+	size_t n_read;
+	if (stream->status != SF_OK)
 		return -1;
+
+	n_read = fread(dest, 1u, size, stream->stream);
+	if (n_read < size) {
+		if (feof(stream->stream))
+			stream->status = SF_EOF;
+		else
+			stream->status = SF_EFILE;
+
+		return -1;
+	}
 
 	return 0;
 }
 
-int sf_put_u16(FILE *stream, u16 value)
+int sf_put_u8(struct sf_stream *stream, u8 value)
+{
+	return sf_write(stream, &value, sizeof(value));
+}
+
+int sf_get_u8(struct sf_stream *restrict stream, u8 *restrict value)
+{
+	return sf_read(stream, value, sizeof(*value));
+}
+
+int sf_put_u16(struct sf_stream *stream, u16 value)
 {
 	value = htole16(value);
-	if (fwrite(&value, sizeof(value), 1, stream) < 1)
-		return -1;
-
-	return 0;
+	return sf_write(stream, &value, sizeof(value));
 }
 
-int sf_get_u16(FILE *restrict stream, u16 *restrict value)
+int sf_get_u16(struct sf_stream *restrict stream, u16 *restrict value)
 {
-	if (fread(value, sizeof(*value), 1, stream) < 1)
-		return -1;
-
-	*value = le16toh(*value);
-	return 0;
+	int ret = sf_read(stream, value, sizeof(*value));
+	if (ret >= 0)
+		*value = le16toh(*value);
+	return ret;
 }
 
-int sf_put_u32(FILE *stream, u32 value)
+int sf_put_u32(struct sf_stream *stream, u32 value)
 {
 	value = htole32(value);
-	if (fwrite(&value, sizeof(value), 1, stream) < 1)
-		return -1;
-
-	return 0;
+	return sf_write(stream, &value, sizeof(value));
 }
 
-int sf_get_u32(FILE *restrict stream, u32 *restrict value)
+int sf_get_u32(struct sf_stream *restrict stream, u32 *restrict value)
 {
-	if (fread(value, sizeof(*value), 1, stream) < 1)
-		return -1;
-
-	*value = le32toh(*value);
+	int ret = sf_read(stream, value, sizeof(*value));
+	if (ret >= 0)
+		*value = le32toh(*value);
 	return 0;
 }
 
-int sf_put_u64(FILE *stream, u64 value)
+int sf_put_u64(struct sf_stream *stream, u64 value)
 {
 	value = htole64(value);
-	if (fwrite(&value, sizeof(value), 1, stream) < 1)
-		return -1;
-
-	return 0;
+	return sf_write(stream, &value, sizeof(value));
 }
 
-int sf_get_u64(FILE *restrict stream, u64 *restrict value)
+int sf_get_u64(struct sf_stream *restrict stream, u64 *restrict value)
 {
-	if (fread(value, sizeof(*value), 1, stream) < 1)
-		return -1;
-
-	*value = le64toh(*value);
+	int ret = sf_read(stream, value, sizeof(*value));
+	if (ret >= 0)
+		*value = le64toh(*value);
 	return 0;
 }
 
-int sf_put_i8(FILE *stream, i8 value)
+int sf_put_i8(struct sf_stream *stream, i8 value)
 {
 	return sf_put_u8(stream, (u8)value);
 }
 
-int sf_get_i8(FILE *restrict stream, i8 *restrict value)
+int sf_get_i8(struct sf_stream *restrict stream, i8 *restrict value)
 {
 	return sf_get_u8(stream, (u8 *)value);
 }
 
-int sf_put_i16(FILE *stream, i16 value)
+int sf_put_i16(struct sf_stream *stream, i16 value)
 {
 	return sf_put_u16(stream, (u16)value);
 }
 
-int sf_get_i16(FILE *restrict stream, i16 *restrict value)
+int sf_get_i16(struct sf_stream *restrict stream, i16 *restrict value)
 {
 	return sf_get_u16(stream, (u16 *)value);
 }
 
-int sf_put_i32(FILE *stream, i32 value)
+int sf_put_i32(struct sf_stream *stream, i32 value)
 {
 	return sf_put_u32(stream, (u32)value);
 }
 
-int sf_get_i32(FILE *restrict stream, i32 *restrict value)
+int sf_get_i32(struct sf_stream *restrict stream, i32 *restrict value)
 {
 	return sf_get_u32(stream, (u32 *)value);
 }
 
-int sf_put_i64(FILE *stream, i64 value)
+int sf_put_i64(struct sf_stream *stream, i64 value)
 {
 	return sf_put_u64(stream, (u64)value);
 }
 
-int sf_get_i64(FILE *restrict stream, i64 *restrict value)
+int sf_get_i64(struct sf_stream *restrict stream, i64 *restrict value)
 {
 	return sf_get_u64(stream, (u64 *)value);
 }
 
-int sf_put_f32(FILE *stream, f32 value)
+int sf_put_f32(struct sf_stream *stream, f32 value)
 {
-	if (fwrite(&value, sizeof(value), 1, stream) < 1)
-		return -1;
-
-	return 0;
+	return sf_write(stream, &value, sizeof(value));
 }
 
-int sf_get_f32(FILE *restrict stream, f32 *restrict value)
+int sf_get_f32(struct sf_stream *restrict stream, f32 *restrict value)
 {
-	if (fread(value, sizeof(*value), 1, stream) < 1)
-		return -1;
-
-	return 0;
+	return sf_read(stream, value, sizeof(*value));
 }
 
-int sf_put_filetime(FILE *stream, FILETIME value)
+int sf_put_filetime(struct sf_stream *stream, FILETIME value)
 {
 	return sf_put_u64(stream, value);
 }
 
-int sf_get_filetime(FILE *restrict stream, FILETIME *restrict value)
+int sf_get_filetime(struct sf_stream *restrict stream, FILETIME *restrict value)
 {
 	return sf_get_u64(stream, value);
 }
 
-int sf_put_vsval(FILE *stream, u32 value)
+int sf_put_vsval(struct sf_stream *stream, u32 value)
 {
 	u32 i;
 	if (value < 0x40u)
@@ -179,7 +194,7 @@ int sf_put_vsval(FILE *stream, u32 value)
 	return 0;
 }
 
-int sf_get_vsval(FILE *restrict stream, u32 *restrict value)
+int sf_get_vsval(struct sf_stream *restrict stream, u32 *restrict value)
 {
 	u8 byte;
 	u32 i;
@@ -199,33 +214,34 @@ int sf_get_vsval(FILE *restrict stream, u32 *restrict value)
 	return 0;
 }
 
-int sf_put_s(FILE *restrict stream, const char *restrict string)
+int sf_put_s(struct sf_stream *restrict stream, const char *restrict string)
 {
 	u16 len = strlen(string);
 
-	if (sf_put_u16(stream, len) == -1)
+	if (sf_put_u16(stream, len) < 0)
 		return -1;
 
-	if (fwrite(string, 1, len, stream) < len)
+	if (sf_write(stream, string, len) < 0)
 		return -1;
 
 	return 0;
 }
 
-int sf_get_s(FILE *restrict stream, char **restrict dest)
+int sf_get_s(struct sf_stream *restrict stream, char **restrict dest)
 {
 	u16 len;
 	char *string;
 
-	if (sf_get_u16(stream, &len) == -1)
+	if (sf_get_u16(stream, &len) < 0)
 		return -1;
 
 	string = malloc(len + 1);
 	if (!string) {
-		return -2;
+		stream->status = SF_EMEM;
+		return -1;
 	}
 
-	if (fread(string, 1, len, stream) < len) {
+	if (sf_read(stream, string, len) < 0) {
 		free(string);
 		return -1;
 	}
