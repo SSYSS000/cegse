@@ -30,6 +30,7 @@ int serialize_file_header(struct sf_stream *restrict stream,
 	sf_put_u32(stream, header->version);
 	sf_put_u32(stream, header->save_num);
 	sf_put_s(stream, header->ply_name);
+	sf_put_u32(stream, header->ply_level);
 	sf_put_s(stream, header->ply_location);
 	sf_put_s(stream, header->game_time);
 	sf_put_s(stream, header->ply_race_id);
