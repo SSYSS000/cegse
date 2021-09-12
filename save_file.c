@@ -22,14 +22,32 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <string.h>
 #include <time.h>
 #include <stdlib.h>
+#include "defines.h"
 #include "file_io.h"
 #include "save_file.h"
 
-static const u8 tesv_magic[] = {
+struct game {
+	enum game_title title;
+	const unsigned char *magic_bytes;
+	int magic_size;
+};
+
+static const unsigned char tesv_magic[] = {
 	'T','E','S','V','_','S','A','V','E','G','A','M','E'};
 
-static const u8 fo4_magic[] = {
+static const unsigned char fo4_magic[] = {
 	'F','O','4','_','S','A','V','E','G','A','M','E'};
+
+
+#define INIT_GAME(title, magic) \
+	{ title, magic, sizeof(magic) }
+
+static const struct game supported_games[] = {
+	INIT_GAME(FALLOUT4, fo4_magic),
+	INIT_GAME(SKYRIM, tesv_magic),
+};
+
+#undef INIT_GAME
 
 /*
  * Convert a FILETIME to a time_t. Note that FILETIME is more accurate
@@ -77,6 +95,30 @@ static int file_compare(FILE *restrict stream,
 	}
 
 	return 0;
+}
+
+/*
+ * Attempts to identify the game of a game save file by reading magic bytes.
+ *
+ * Note that on success, the file position indicator is at the end
+ * of the magic bytes.
+ * If the game cannot be identified or a file error occurred, return NULL.
+ * Otherwise, return a pointer to the game.
+ */
+static const struct game *identify_game_save_game(FILE *stream)
+{
+	int rc;
+	const struct game *i;
+
+	for (i = supported_games; i != ARRAY_END(supported_games); ++i) {
+		rc = file_compare(stream, i->magic_bytes, i->magic_size);
+		if (rc == -1)
+			return NULL;
+		else if (rc == 0)
+			return i;
+	}
+
+	return NULL;
 }
 
 int serialize_file_header(struct sf_stream *restrict stream,

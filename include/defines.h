@@ -24,4 +24,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define eprintf(...) fprintf(stderr, __VA_ARGS__)
 
+#define ARRAY_SIZE(a) (sizeof((a)) / sizeof(*(a)))
+
+#define ARRAY_END(a) ((a) + ARRAY_SIZE(a))
+
 #endif // CEGSE_DEFINES_H
