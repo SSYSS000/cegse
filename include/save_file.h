@@ -92,4 +92,46 @@ int serialize_file_location_table(
 int deserialize_file_location_table(struct sf_stream *restrict stream,
 				    struct file_location_table *restrict table);
 
+enum game_title {
+	SKYRIM,
+	FALLOUT4
+};
+
+struct game_save {
+	enum game_title game_title;
+	int engine_version;
+	int save_num;
+
+	struct snapshot {
+		int width;
+		int height;
+		unsigned char *pixels;
+	} snapshot;
+
+	int num_plugins;
+	char **plugins;
+
+	int num_light_plugins;
+	char **light_plugins;
+};
+
+/*
+ * Create a game save.
+ *
+ * engine_version specifies the Creation Engine version
+ * of the game specified by game_title.
+ *
+ * Return a pointer to an initialized game save or
+ * return NULL if memory allocation fails.
+ */
+struct game_save* create_game_save(enum game_title game_title,
+				   u32 engine_version);
+
+/*
+ * Destroy a game save, freeing its held resources.
+ *
+ * Further use of the game save results in undefined behavior.
+ */
+void destroy_game_save(struct game_save *save);
+
 #endif // CEGSE_SAVE_FILE

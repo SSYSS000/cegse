@@ -161,3 +161,30 @@ int deserialize_file_location_table(struct sf_stream *restrict stream,
 
 	return 0;
 }
+
+struct game_save* create_game_save(enum game_title game_title,
+				   u32 engine_version)
+{
+	struct game_save *save = calloc(1, sizeof(*save));
+	if (!save)
+		return NULL;
+
+	save->game_title = game_title;
+	save->engine_version = engine_version;
+	return save;
+}
+
+void destroy_game_save(struct game_save *save)
+{
+	free(save->snapshot.pixels);
+
+	for (int i = 0; i < save->num_plugins; ++i)
+		free(save->plugins[i]);
+	free(save->plugins);
+
+	for (int i = 0; i < save->num_light_plugins; ++i)
+		free(save->light_plugins[i]);
+	free(save->light_plugins);
+
+	free(save);
+}
