@@ -24,6 +24,44 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "file_io.h"
 #include "save_file.h"
 
+static const u8 tesv_magic[] = {
+	'T','E','S','V','_','S','A','V','E','G','A','M','E'};
+
+static const u8 fo4_magic[] = {
+	'F','O','4','_','S','A','V','E','G','A','M','E'};
+
+
+/*
+ * Compare the next num bytes in stream with data.
+ *
+ * If equal, return 0. If unequal or EOF is reached,
+ * seek the file back to the original position and return 1.
+ *
+ * The size of data should not be less than num.
+ *
+ * On file error, return -1.
+ */
+static int file_compare(FILE *restrict stream,
+			const void *restrict data, int num)
+{
+	int c;
+	int i;
+
+	for (i = 0; i < num; ++i) {
+		c = fgetc(stream);
+		if (c == EOF && ferror(stream))
+			return -1;
+
+		if (c != (int)((u8 *)data)[i]) {
+			fseek(stream, -(i + 1), SEEK_CUR);
+			return 1;
+		}
+
+	}
+
+	return 0;
+}
+
 int serialize_file_header(struct sf_stream *restrict stream,
 			  const struct file_header *restrict header)
 {
