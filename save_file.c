@@ -192,10 +192,10 @@ struct game_save* create_game_save(enum game_title game_title,
 }
 
 /*
- * Fill a file header that will describe a game save.
+ * Builds a serializable file header of a game save.
  */
-static void file_header_from_game_save(struct file_header *restrict header,
-				       const struct game_save *restrict save)
+static void compose_file_header(struct file_header *restrict header,
+				const struct game_save *restrict save)
 {
 	memset(header, 0, sizeof(*header));
 	header->version = save->engine_version;
@@ -205,6 +205,7 @@ static void file_header_from_game_save(struct file_header *restrict header,
 	header->snapshot_width = save->snapshot.width;
 	header->snapshot_height = save->snapshot.height;
 }
+
 
 void destroy_game_save(struct game_save *save)
 {
