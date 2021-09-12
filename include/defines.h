@@ -22,4 +22,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef CEGSE_DEFINES_H
 #define CEGSE_DEFINES_H
 
+#define eprintf(...) fprintf(stderr, __VA_ARGS__)
+
 #endif // CEGSE_DEFINES_H
