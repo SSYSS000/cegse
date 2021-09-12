@@ -125,7 +125,7 @@ struct game_save {
  * return NULL if memory allocation fails.
  */
 struct game_save* create_game_save(enum game_title game_title,
-				   u32 engine_version);
+				   int engine_version);
 
 /*
  * Destroy a game save, freeing its held resources.

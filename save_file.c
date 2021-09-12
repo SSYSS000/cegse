@@ -163,7 +163,7 @@ int deserialize_file_location_table(struct sf_stream *restrict stream,
 }
 
 struct game_save* create_game_save(enum game_title game_title,
-				   u32 engine_version)
+				   int engine_version)
 {
 	struct game_save *save = calloc(1, sizeof(*save));
 	if (!save)
