@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef CEGSE_SAVE_FILE
 #define CEGSE_SAVE_FILE
 
+#include <time.h>
 #include "file_io.h"
 #include "types.h"
 
@@ -101,6 +102,8 @@ struct game_save {
 	enum game_title game_title;
 	int engine_version;
 	int save_num;
+
+	time_t time_saved;
 
 	struct snapshot {
 		int width;
