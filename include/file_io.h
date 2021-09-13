@@ -36,7 +36,7 @@ enum sf_stream_status {
 struct sf_stream {
 	FILE *stream;
 	enum sf_stream_status status;
-	u32 version;
+	u32 engine_version;		/* Creation Engine version */
 	u8 format;
 };
 

@@ -125,8 +125,8 @@ static const struct game *identify_game_save_game(FILE *stream)
 int serialize_file_header(struct sf_stream *restrict stream,
 			  const struct file_header *restrict header)
 {
-	assert(header->version == stream->version);
-	sf_put_u32(stream, header->version);
+	assert(header->engine_version == stream->engine_version);
+	sf_put_u32(stream, header->engine_version);
 	sf_put_u32(stream, header->save_num);
 	sf_put_s(stream, header->ply_name);
 	sf_put_u32(stream, header->ply_level);
@@ -140,7 +140,7 @@ int serialize_file_header(struct sf_stream *restrict stream,
 	sf_put_u32(stream, header->snapshot_width);
 	sf_put_u32(stream, header->snapshot_height);
 
-	if (stream->version >= 12u)
+	if (stream->engine_version >= 12u)
 		sf_put_u16(stream, header->compression_type);
 
 	if (stream->status != SF_OK)
@@ -152,7 +152,7 @@ int serialize_file_header(struct sf_stream *restrict stream,
 int deserialize_file_header(struct sf_stream *restrict stream,
 			    struct file_header *restrict header)
 {
-	sf_get_u32(stream, &header->version);
+	sf_get_u32(stream, &header->engine_version);
 	sf_get_u32(stream, &header->save_num);
 	sf_get_ns(stream, header->ply_name, sizeof(header->ply_name));
 	sf_get_u32(stream, &header->ply_level);
@@ -166,7 +166,7 @@ int deserialize_file_header(struct sf_stream *restrict stream,
 	sf_get_u32(stream, &header->snapshot_width);
 	sf_get_u32(stream, &header->snapshot_height);
 
-	if (header->version >= 12u)
+	if (header->engine_version >= 12u)
 		sf_get_u16(stream, &header->compression_type);
 
 	if (stream->status != SF_OK)
@@ -242,7 +242,7 @@ static void compose_file_header(struct file_header *restrict header,
 				const struct game_save *restrict save)
 {
 	memset(header, 0, sizeof(*header));
-	header->version = save->engine_version;
+	header->engine_version = save->engine_version;
 	header->save_num = save->save_num;
 	/* TODO: Copy player info here */
 	header->filetime = time_to_filetime(save->time_saved);

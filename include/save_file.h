@@ -27,7 +27,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "types.h"
 
 struct file_header {
-	u32 version;		/* Creation Engine version */
+	u32 engine_version;	/* Creation Engine version */
 	u32 save_num;
 	char ply_name[64];	/* Player name */
 	u32 ply_level;
