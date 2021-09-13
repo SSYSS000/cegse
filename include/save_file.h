@@ -111,6 +111,13 @@ struct game_save {
 		unsigned char *pixels;
 	} snapshot;
 
+	/*
+	 * The patch version of the creator of this save.
+	 * For Fallout 4 this might be e.g. "1.10.162.0".
+	 * Skyrim does not use this.
+	*/
+	char game_version[24];
+
 	int num_plugins;
 	char **plugins;
 
