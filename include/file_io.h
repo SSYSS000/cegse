@@ -25,213 +25,213 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdio.h>
 #include "types.h"
 
-enum sf_stream_status {
-	SF_OK = 0,
-	SF_EOF,		/* End-of-file */
-	SF_EFILE,	/* File error */
-	SF_EMEM,	/* Memory allocation error */
-	SF_ESIZE 	/* Size error; buffer too small or size mismatch */
-};
-
 struct sf_stream {
 	FILE *stream;
-	enum sf_stream_status status;
+	enum status_code status;
 	u32 engine_version;		/* Creation Engine version */
 	u8 format;
 };
 
 /*
- * Write exactly size bytes from src to stream. If error status is set,
- * fail instead, but don't set error status.
+ * NOTE: All sf_* functions fail immediately if the stream has faced an error,
+ * i.e. stream status != S_OK.
+ */
+
+/*
+ * Write exactly size bytes from src to stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On file error, set stream status to S_EFILE.
+ *
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_write(struct sf_stream *restrict stream, const void *restrict src,
 	     size_t size);
 
 /*
- * Read exactly size bytes from stream to dest. If error status is set,
- * fail instead, but don't set error status.
+ * Read exactly size bytes from stream to dest.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On file error, set stream status to S_EFILE.
+ * On EOF, set stream status to S_EOF.
+ *
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_read(struct sf_stream *restrict stream, void *restrict dest, size_t size);
 
 /*
  * Write an unsigned 8-bit integer to stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_put_u8(struct sf_stream *stream, u8 value);
 
 /*
  * Read an unsigned 8-bit integer from stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_get_u8(struct sf_stream *restrict stream, u8 *restrict value);
 
 /*
  * Write an unsigned 16-bit integer to stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_put_u16(struct sf_stream *stream, u16 value);
 
 /*
  * Read an unsigned 16-bit integer from stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_get_u16(struct sf_stream *restrict stream, u16 *restrict value);
 
 /*
  * Write an unsigned 32-bit integer to stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_put_u32(struct sf_stream *stream, u32 value);
 
 /*
  * Read an unsigned 32-bit integer from stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_get_u32(struct sf_stream *restrict stream, u32 *restrict value);
 
 /*
  * Write an unsigned 64-bit integer to stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_put_u64(struct sf_stream *stream, u64 value);
 
 /*
  * Read an unsigned 64-bit integer from stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_get_u64(struct sf_stream *restrict stream, u64 *restrict value);
 
 /*
  * Write a signed 8-bit integer to stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_put_i8(struct sf_stream *stream, i8 value);
 
 /*
  * Read a signed 8-bit integer from stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_get_i8(struct sf_stream *restrict stream, i8 *restrict value);
 
 /*
  * Write a signed 16-bit integer to stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_put_i16(struct sf_stream *stream, i16 value);
 
 /*
  * Read a signed 16-bit integer from stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_get_i16(struct sf_stream *restrict stream, i16 *restrict value);
 
 /*
  * Write a signed 32-bit integer to stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_put_i32(struct sf_stream *stream, i32 value);
 
 /*
  * Read a signed 32-bit integer from stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_get_i32(struct sf_stream *restrict stream, i32 *restrict value);
 
 /*
  * Write a signed 64-bit integer to stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_put_i64(struct sf_stream *stream, i64 value);
 
 /*
  * Read a signed 64-bit integer from stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_get_i64(struct sf_stream *restrict stream, i64 *restrict value);
 
 /*
  * Write a 32-bit floating point to stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_put_f32(struct sf_stream *stream, f32 value);
 
 /*
  * Read a 32-bit floating point from stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_get_f32(struct sf_stream *restrict stream, f32 *restrict value);
 
 /*
  * Write a FILETIME to stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_put_filetime(struct sf_stream *stream, FILETIME value);
 
 /*
  * Read a FILETIME from stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_get_filetime(struct sf_stream *restrict stream, FILETIME *restrict value);
 
 /*
  * Write a variable-size value to stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_put_vsval(struct sf_stream *stream, u32 value);
 
 /*
  * Read a variable-size value from stream.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_get_vsval(struct sf_stream *restrict stream, u32 *restrict value);
 
@@ -239,18 +239,20 @@ int sf_get_vsval(struct sf_stream *restrict stream, u32 *restrict value);
  * Write a string to stream without the terminating null-byte character,
  * prefixed by a 16-bit integer denoting its length.
  *
- * On success, return a nonnegative integer.
- * On failure, set error status and return a negative integer.
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
  */
 int sf_put_s(struct sf_stream *restrict stream, const char *restrict string);
 
 /*
  * Read a string, prefixed by its 16-bit length, from stream. The caller is
  * responsible for freeing the string mallocated in dest.
- * The contents of dest remain unchanged on failure.
  *
- * On success, return the length of the string.
- * On failure, set error status and return a negative integer.
+ * On memory allocation error, the contents of dest remain unchanged
+ * and stream status is set to S_EMEM.
+ *
+ * On success, return the length of the string. Otherwise,
+ * return the stream status negated.
  */
 int sf_get_s(struct sf_stream *restrict stream, char **restrict dest);
 
@@ -259,10 +261,10 @@ int sf_get_s(struct sf_stream *restrict stream, char **restrict dest);
  *
  * If the string cannot fit to dest along with its
  * terminating null-byte (strlen+1 > dest_size), the function fails and
- * SF_ESIZE is set. The contents of dest remain unchanged, too.
+ * S_ESIZE is set. The contents of dest remain unchanged, too.
  *
- * On success, return the length of the string.
- * On failure, set error status and return a negative integer.
+ * On success, return the length of the string. Otherwise,
+ * return the stream status negated.
  */
 int sf_get_ns(struct sf_stream *restrict stream, char *restrict dest,
 	      size_t dest_size);

@@ -29,39 +29,32 @@ int sf_write(struct sf_stream *restrict stream, const void *restrict src,
 	     size_t size)
 {
 	size_t n_written;
-	if (stream->status != SF_OK)
-		return -1;
+	if (stream->status != S_OK)
+		return -stream->status;
 
 	n_written = fwrite(src, 1u, size, stream->stream);
 	if (n_written < size) {
-		if (feof(stream->stream))
-			stream->status = SF_EOF;
-		else
-			stream->status = SF_EFILE;
-
-		return -1;
+		stream->status = S_EFILE;
 	}
 
-	return 0;
+	return -stream->status;
 }
 
 int sf_read(struct sf_stream *restrict stream, void *restrict dest, size_t size)
 {
 	size_t n_read;
-	if (stream->status != SF_OK)
-		return -1;
+	if (stream->status != S_OK)
+		return -stream->status;
 
 	n_read = fread(dest, 1u, size, stream->stream);
 	if (n_read < size) {
 		if (feof(stream->stream))
-			stream->status = SF_EOF;
+			stream->status = S_EOF;
 		else
-			stream->status = SF_EFILE;
-
-		return -1;
+			stream->status = S_EFILE;
 	}
 
-	return 0;
+	return -stream->status;
 }
 
 int sf_put_u8(struct sf_stream *stream, u8 value)
@@ -99,7 +92,7 @@ int sf_get_u32(struct sf_stream *restrict stream, u32 *restrict value)
 	int ret = sf_read(stream, value, sizeof(*value));
 	if (ret >= 0)
 		*value = le32toh(*value);
-	return 0;
+	return ret;
 }
 
 int sf_put_u64(struct sf_stream *stream, u64 value)
@@ -113,7 +106,7 @@ int sf_get_u64(struct sf_stream *restrict stream, u64 *restrict value)
 	int ret = sf_read(stream, value, sizeof(*value));
 	if (ret >= 0)
 		*value = le64toh(*value);
-	return 0;
+	return ret;
 }
 
 int sf_put_i8(struct sf_stream *stream, i8 value)
@@ -186,12 +179,10 @@ int sf_put_vsval(struct sf_stream *stream, u32 value)
 		return sf_put_u16(stream, value << 2u | 1u);
 
 	value = value << 2u | 2u;
-	for (i = 0u; i < 3u; ++i) {
-		if (sf_put_u8(stream, value >> i * 8u) < 0)
-			return -1;
-	}
+	for (i = 0u; i < 3u; ++i)
+		sf_put_u8(stream, value >> i * 8u);
 
-	return 0;
+	return -stream->status;
 }
 
 int sf_get_vsval(struct sf_stream *restrict stream, u32 *restrict value)
@@ -204,7 +195,7 @@ int sf_get_vsval(struct sf_stream *restrict stream, u32 *restrict value)
 	*value = 0u;
 	do {
 		if (sf_get_u8(stream, &byte) < 0)
-			return -1;
+			return -stream->status;
 
 		*value |= byte << i * 8u;
 		i++;
@@ -217,14 +208,9 @@ int sf_get_vsval(struct sf_stream *restrict stream, u32 *restrict value)
 int sf_put_s(struct sf_stream *restrict stream, const char *restrict string)
 {
 	u16 len = strlen(string);
-
-	if (sf_put_u16(stream, len) < 0)
-		return -1;
-
-	if (sf_write(stream, string, len) < 0)
-		return -1;
-
-	return 0;
+	sf_put_u16(stream, len);
+	sf_write(stream, string, len);
+	return -stream->status;
 }
 
 int sf_get_s(struct sf_stream *restrict stream, char **restrict dest)
@@ -232,18 +218,17 @@ int sf_get_s(struct sf_stream *restrict stream, char **restrict dest)
 	u16 len;
 	char *string;
 
-	if (sf_get_u16(stream, &len) < 0)
-		return -1;
-
+	sf_get_u16(stream, &len);
 	string = malloc(len + 1);
 	if (!string) {
-		stream->status = SF_EMEM;
-		return -1;
+		stream->status = S_EMEM;
+		return -S_EMEM;
 	}
 
-	if (sf_read(stream, string, len) < 0) {
+	sf_read(stream, string, len);
+	if (stream->status != S_OK) {
 		free(string);
-		return -1;
+		return -stream->status;
 	}
 
 	string[len] = '\0';
@@ -256,16 +241,15 @@ int sf_get_ns(struct sf_stream *restrict stream, char *restrict dest,
 {
 	u16 len;
 
-	if (sf_get_u16(stream, &len) < 0)
-		return -1;
+	sf_get_u16(stream, &len);
 
 	if (dest_size < len + 1u) {
-		stream->status = SF_ESIZE;
-		return -1;
+		stream->status = S_ESIZE;
+		return -S_ESIZE;
 	}
 
 	if (sf_read(stream, dest, len) < 0) {
-		return -1;
+		return -stream->status;
 	}
 
 	dest[len] = '\0';

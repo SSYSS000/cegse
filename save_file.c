@@ -75,7 +75,7 @@ static FILETIME time_to_filetime(time_t t)
  *
  * The size of data should not be less than num.
  *
- * On file error, return -1.
+ * On file error, return -S_EFILE.
  */
 static int file_compare(FILE *restrict stream,
 			const void *restrict data, int num)
@@ -86,7 +86,7 @@ static int file_compare(FILE *restrict stream,
 	for (i = 0; i < num; ++i) {
 		c = fgetc(stream);
 		if (c == EOF && ferror(stream))
-			return -1;
+			return -S_EFILE;
 
 		if (c != (int)((u8 *)data)[i]) {
 			fseek(stream, -(i + 1), SEEK_CUR);
@@ -143,10 +143,7 @@ int serialize_file_header(struct sf_stream *restrict stream,
 	if (stream->engine_version >= 12u)
 		sf_put_u16(stream, header->compression_type);
 
-	if (stream->status != SF_OK)
-		return -1;
-
-	return 0;
+	return -stream->status;
 }
 
 int deserialize_file_header(struct sf_stream *restrict stream,
@@ -169,10 +166,7 @@ int deserialize_file_header(struct sf_stream *restrict stream,
 	if (header->engine_version >= 12u)
 		sf_get_u16(stream, &header->compression_type);
 
-	if (stream->status != SF_OK)
-		return -1;
-
-	return 0;
+	return -stream->status;
 }
 
 int serialize_file_location_table(
@@ -194,10 +188,7 @@ int serialize_file_location_table(
 	for (int i = 0; i < 15; ++i)
 		sf_put_u32(stream, 0u);
 
-	if (stream->status != SF_OK)
-		return -1;
-
-	return 0;
+	return -stream->status;
 }
 
 int deserialize_file_location_table(struct sf_stream *restrict stream,
@@ -217,10 +208,7 @@ int deserialize_file_location_table(struct sf_stream *restrict stream,
 	// Skip unused.
 	fseek(stream->stream, sizeof(u32[15]), SEEK_CUR);
 
-	if (stream->status != SF_OK)
-		return -1;
-
-	return 0;
+	return -stream->status;
 }
 
 /*
@@ -249,6 +237,9 @@ static int get_snapshot_size(const struct snapshot *shot)
 /*
  * Initialize a snapshot. The caller is responsible for destroying it when
  * no longer needed.
+ *
+ * On success, return the amount of memory allocated for pixel data in bytes.
+ * Otherwise, return -S_EMEM.
  */
 static int init_snapshot(struct snapshot *shot, enum pixel_format px_format,
 			 int width, int height)
@@ -260,7 +251,7 @@ static int init_snapshot(struct snapshot *shot, enum pixel_format px_format,
 	shot_sz = get_snapshot_size(shot);
 	shot->pixels = malloc(shot_sz);
 	if (!shot->pixels)
-		return -1;
+		return -S_EMEM;
 
 	return shot_sz;
 }
