@@ -45,7 +45,7 @@ int file_compare(FILE *restrict stream, const void *restrict data, int num)
 	return 0;
 }
 
-int sf_write(struct sf_stream *restrict stream, const void *restrict src,
+int sf_write(struct save_file *restrict stream, const void *restrict src,
 	     size_t size)
 {
 	size_t n_written;
@@ -60,7 +60,7 @@ int sf_write(struct sf_stream *restrict stream, const void *restrict src,
 	return -stream->status;
 }
 
-int sf_read(struct sf_stream *restrict stream, void *restrict dest, size_t size)
+int sf_read(struct save_file *restrict stream, void *restrict dest, size_t size)
 {
 	size_t n_read;
 	if (stream->status != S_OK)
@@ -77,23 +77,23 @@ int sf_read(struct sf_stream *restrict stream, void *restrict dest, size_t size)
 	return -stream->status;
 }
 
-int sf_put_u8(struct sf_stream *stream, u8 value)
+int sf_put_u8(struct save_file *stream, u8 value)
 {
 	return sf_write(stream, &value, sizeof(value));
 }
 
-int sf_get_u8(struct sf_stream *restrict stream, u8 *restrict value)
+int sf_get_u8(struct save_file *restrict stream, u8 *restrict value)
 {
 	return sf_read(stream, value, sizeof(*value));
 }
 
-int sf_put_u16(struct sf_stream *stream, u16 value)
+int sf_put_u16(struct save_file *stream, u16 value)
 {
 	value = htole16(value);
 	return sf_write(stream, &value, sizeof(value));
 }
 
-int sf_get_u16(struct sf_stream *restrict stream, u16 *restrict value)
+int sf_get_u16(struct save_file *restrict stream, u16 *restrict value)
 {
 	int ret = sf_read(stream, value, sizeof(*value));
 	if (ret >= 0)
@@ -101,13 +101,13 @@ int sf_get_u16(struct sf_stream *restrict stream, u16 *restrict value)
 	return ret;
 }
 
-int sf_put_u32(struct sf_stream *stream, u32 value)
+int sf_put_u32(struct save_file *stream, u32 value)
 {
 	value = htole32(value);
 	return sf_write(stream, &value, sizeof(value));
 }
 
-int sf_get_u32(struct sf_stream *restrict stream, u32 *restrict value)
+int sf_get_u32(struct save_file *restrict stream, u32 *restrict value)
 {
 	int ret = sf_read(stream, value, sizeof(*value));
 	if (ret >= 0)
@@ -115,13 +115,13 @@ int sf_get_u32(struct sf_stream *restrict stream, u32 *restrict value)
 	return ret;
 }
 
-int sf_put_u64(struct sf_stream *stream, u64 value)
+int sf_put_u64(struct save_file *stream, u64 value)
 {
 	value = htole64(value);
 	return sf_write(stream, &value, sizeof(value));
 }
 
-int sf_get_u64(struct sf_stream *restrict stream, u64 *restrict value)
+int sf_get_u64(struct save_file *restrict stream, u64 *restrict value)
 {
 	int ret = sf_read(stream, value, sizeof(*value));
 	if (ret >= 0)
@@ -129,67 +129,67 @@ int sf_get_u64(struct sf_stream *restrict stream, u64 *restrict value)
 	return ret;
 }
 
-int sf_put_i8(struct sf_stream *stream, i8 value)
+int sf_put_i8(struct save_file *stream, i8 value)
 {
 	return sf_put_u8(stream, (u8)value);
 }
 
-int sf_get_i8(struct sf_stream *restrict stream, i8 *restrict value)
+int sf_get_i8(struct save_file *restrict stream, i8 *restrict value)
 {
 	return sf_get_u8(stream, (u8 *)value);
 }
 
-int sf_put_i16(struct sf_stream *stream, i16 value)
+int sf_put_i16(struct save_file *stream, i16 value)
 {
 	return sf_put_u16(stream, (u16)value);
 }
 
-int sf_get_i16(struct sf_stream *restrict stream, i16 *restrict value)
+int sf_get_i16(struct save_file *restrict stream, i16 *restrict value)
 {
 	return sf_get_u16(stream, (u16 *)value);
 }
 
-int sf_put_i32(struct sf_stream *stream, i32 value)
+int sf_put_i32(struct save_file *stream, i32 value)
 {
 	return sf_put_u32(stream, (u32)value);
 }
 
-int sf_get_i32(struct sf_stream *restrict stream, i32 *restrict value)
+int sf_get_i32(struct save_file *restrict stream, i32 *restrict value)
 {
 	return sf_get_u32(stream, (u32 *)value);
 }
 
-int sf_put_i64(struct sf_stream *stream, i64 value)
+int sf_put_i64(struct save_file *stream, i64 value)
 {
 	return sf_put_u64(stream, (u64)value);
 }
 
-int sf_get_i64(struct sf_stream *restrict stream, i64 *restrict value)
+int sf_get_i64(struct save_file *restrict stream, i64 *restrict value)
 {
 	return sf_get_u64(stream, (u64 *)value);
 }
 
-int sf_put_f32(struct sf_stream *stream, f32 value)
+int sf_put_f32(struct save_file *stream, f32 value)
 {
 	return sf_write(stream, &value, sizeof(value));
 }
 
-int sf_get_f32(struct sf_stream *restrict stream, f32 *restrict value)
+int sf_get_f32(struct save_file *restrict stream, f32 *restrict value)
 {
 	return sf_read(stream, value, sizeof(*value));
 }
 
-int sf_put_filetime(struct sf_stream *stream, FILETIME value)
+int sf_put_filetime(struct save_file *stream, FILETIME value)
 {
 	return sf_put_u64(stream, value);
 }
 
-int sf_get_filetime(struct sf_stream *restrict stream, FILETIME *restrict value)
+int sf_get_filetime(struct save_file *restrict stream, FILETIME *restrict value)
 {
 	return sf_get_u64(stream, value);
 }
 
-int sf_put_vsval(struct sf_stream *stream, u32 value)
+int sf_put_vsval(struct save_file *stream, u32 value)
 {
 	u32 i;
 	if (value < 0x40u)
@@ -205,7 +205,7 @@ int sf_put_vsval(struct sf_stream *stream, u32 value)
 	return -stream->status;
 }
 
-int sf_get_vsval(struct sf_stream *restrict stream, u32 *restrict value)
+int sf_get_vsval(struct save_file *restrict stream, u32 *restrict value)
 {
 	u8 byte;
 	u32 i;
@@ -225,7 +225,7 @@ int sf_get_vsval(struct sf_stream *restrict stream, u32 *restrict value)
 	return 0;
 }
 
-int sf_put_s(struct sf_stream *restrict stream, const char *restrict string)
+int sf_put_s(struct save_file *restrict stream, const char *restrict string)
 {
 	u16 len = strlen(string);
 	sf_put_u16(stream, len);
@@ -233,7 +233,7 @@ int sf_put_s(struct sf_stream *restrict stream, const char *restrict string)
 	return -stream->status;
 }
 
-int sf_get_s(struct sf_stream *restrict stream, char **restrict dest)
+int sf_get_s(struct save_file *restrict stream, char **restrict dest)
 {
 	u16 len;
 	char *string;
@@ -256,7 +256,7 @@ int sf_get_s(struct sf_stream *restrict stream, char **restrict dest)
 	return len;
 }
 
-int sf_get_ns(struct sf_stream *restrict stream, char *restrict dest,
+int sf_get_ns(struct save_file *restrict stream, char *restrict dest,
 	      size_t dest_size)
 {
 	u16 len;

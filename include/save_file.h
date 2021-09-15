@@ -49,7 +49,7 @@ struct file_header {
  * On success, return nonnegative integer.
  * On failure, return -1.
  */
-int serialize_file_header(struct sf_stream *restrict stream,
+int serialize_file_header(struct save_file *restrict stream,
 			  const struct file_header *restrict header);
 
 /*
@@ -58,7 +58,7 @@ int serialize_file_header(struct sf_stream *restrict stream,
  * On success, return nonnegative integer.
  * On failure, return -1.
  */
-int deserialize_file_header(struct sf_stream *restrict stream,
+int deserialize_file_header(struct save_file *restrict stream,
 			    struct file_header *restrict header);
 
 struct file_location_table {
@@ -81,7 +81,7 @@ struct file_location_table {
  * On failure, return a negative integer.
  */
 int serialize_file_location_table(
-	struct sf_stream *restrict stream,
+	struct save_file *restrict stream,
 	const struct file_location_table *restrict table);
 
 /*
@@ -90,7 +90,7 @@ int serialize_file_location_table(
  * On success, return a nonnegative integer.
  * On failure, return a negative integer.
  */
-int deserialize_file_location_table(struct sf_stream *restrict stream,
+int deserialize_file_location_table(struct save_file *restrict stream,
 				    struct file_location_table *restrict table);
 
 enum game_title {

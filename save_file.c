@@ -92,7 +92,7 @@ static const struct game *identify_game_save_game(FILE *stream)
 	return NULL;
 }
 
-int serialize_file_header(struct sf_stream *restrict stream,
+int serialize_file_header(struct save_file *restrict stream,
 			  const struct file_header *restrict header)
 {
 	assert(header->engine_version == stream->engine_version);
@@ -116,7 +116,7 @@ int serialize_file_header(struct sf_stream *restrict stream,
 	return -stream->status;
 }
 
-int deserialize_file_header(struct sf_stream *restrict stream,
+int deserialize_file_header(struct save_file *restrict stream,
 			    struct file_header *restrict header)
 {
 	sf_get_u32(stream, &header->engine_version);
@@ -140,7 +140,7 @@ int deserialize_file_header(struct sf_stream *restrict stream,
 }
 
 int serialize_file_location_table(
-	struct sf_stream *restrict stream,
+	struct save_file *restrict stream,
 	const struct file_location_table *restrict table)
 {
 	sf_put_u32(stream, table->form_id_array_count_offset);
@@ -161,7 +161,7 @@ int serialize_file_location_table(
 	return -stream->status;
 }
 
-int deserialize_file_location_table(struct sf_stream *restrict stream,
+int deserialize_file_location_table(struct save_file *restrict stream,
 				    struct file_location_table *restrict table)
 {
 	sf_get_u32(stream, &table->form_id_array_count_offset);
