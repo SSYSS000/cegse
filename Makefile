@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -Iinclude -Wall -Wextra -g
-LIBS =
+LIBS = -llz4
 
 OBJS = 	main.o \
 	file_io.o \

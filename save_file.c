@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <time.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <lz4.h>
 #include "defines.h"
 #include "file_io.h"
 #include "save_file.h"
@@ -284,4 +285,64 @@ void destroy_game_save(struct game_save *save)
 	free(save->light_plugins);
 
 	free(save);
+}
+
+/*
+ * Compress input_size bytes from istream to ostream using LZ4.
+ *
+ * Return S_OK on success. Otherwise, return S_EMEM to indicate memory
+ * allocation error.
+ */
+static int compress_lz4(FILE *restrict istream, FILE *restrict ostream,
+			int input_size)
+{
+	int ret = S_OK;
+	int output_size = LZ4_compressBound(input_size);
+	char *output_buffer = malloc(output_size);
+	char *input_buffer = malloc(input_size);
+	if (!output_buffer || !input_buffer) {
+		ret = S_EMEM;
+		goto out_cleanup;
+	}
+
+	fread(input_buffer, 1, input_size, istream);
+
+	int compressed_size = LZ4_compress_default(
+		input_buffer,
+		output_buffer,
+		input_size,
+		output_size);
+
+	fwrite(output_buffer, 1, compressed_size, ostream);
+out_cleanup:
+	free(output_buffer);
+	free(input_buffer);
+	return ret;
+}
+
+/*
+ * Decompress comp_size bytes into decomp_size bytes from istream to ostream
+ * using LZ4.
+ *
+ * Return S_OK on success. Otherwise, return S_EMEM to indicate memory
+ * allocation error.
+ */
+static int decompress_lz4(FILE *restrict istream, FILE *restrict ostream,
+			  int comp_size, int decomp_size)
+{
+	int ret = S_OK;
+	char *comp_buf = malloc(comp_size);
+	char *decomp_buf = malloc(decomp_size);
+	if (!comp_buf || !decomp_buf) {
+		ret = S_EMEM;
+		goto out_cleanup;
+	}
+
+	fread(comp_buf, 1, comp_size, istream);
+	LZ4_decompress_safe(comp_buf, decomp_buf, comp_size, decomp_size);
+	fwrite(decomp_buf, 1, decomp_size, ostream);
+out_cleanup:
+	free(comp_buf);
+	free(decomp_buf);
+	return ret;
 }
