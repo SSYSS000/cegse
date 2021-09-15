@@ -68,37 +68,6 @@ static FILETIME time_to_filetime(time_t t)
 }
 
 /*
- * Compare the next num bytes in stream with data.
- *
- * If equal, return 0. If unequal or EOF is reached,
- * seek the file back to the original position and return 1.
- *
- * The size of data should not be less than num.
- *
- * On file error, return -S_EFILE.
- */
-static int file_compare(FILE *restrict stream,
-			const void *restrict data, int num)
-{
-	int c;
-	int i;
-
-	for (i = 0; i < num; ++i) {
-		c = fgetc(stream);
-		if (c == EOF && ferror(stream))
-			return -S_EFILE;
-
-		if (c != (int)((u8 *)data)[i]) {
-			fseek(stream, -(i + 1), SEEK_CUR);
-			return 1;
-		}
-
-	}
-
-	return 0;
-}
-
-/*
  * Attempts to identify the game of a game save file by reading magic bytes.
  *
  * Note that on success, the file position indicator is at the end

@@ -33,6 +33,18 @@ struct sf_stream {
 };
 
 /*
+ * Compare the next num bytes in stream with data.
+ *
+ * If equal, return 0. If unequal or EOF is reached,
+ * seek the file back to the original position and return 1.
+ *
+ * The size of data should not be less than num.
+ *
+ * On file error, return -S_EFILE.
+ */
+int file_compare(FILE *restrict stream, const void *restrict data, int num);
+
+/*
  * NOTE: All sf_* functions fail immediately if the stream has faced an error,
  * i.e. stream status != S_OK.
  */

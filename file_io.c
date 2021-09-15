@@ -25,6 +25,26 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <string.h>
 #include "file_io.h"
 
+int file_compare(FILE *restrict stream, const void *restrict data, int num)
+{
+	int c;
+	int i;
+
+	for (i = 0; i < num; ++i) {
+		c = fgetc(stream);
+		if (c == EOF && ferror(stream))
+			return -S_EFILE;
+
+		if (c != (int)((u8 *)data)[i]) {
+			fseek(stream, -(i + 1), SEEK_CUR);
+			return 1;
+		}
+
+	}
+
+	return 0;
+}
+
 int sf_write(struct sf_stream *restrict stream, const void *restrict src,
 	     size_t size)
 {
