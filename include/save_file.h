@@ -98,6 +98,15 @@ enum game_title {
 	FALLOUT4
 };
 
+enum pixel_format { PXFMT_RGB, PXFMT_RGBA };
+
+struct snapshot {
+	int width;
+	int height;
+	enum pixel_format pixel_format;
+	unsigned char *pixels;
+};
+
 struct game_save {
 	enum game_title game_title;
 	int engine_version;
@@ -105,11 +114,7 @@ struct game_save {
 
 	time_t time_saved;
 
-	struct snapshot {
-		int width;
-		int height;
-		unsigned char *pixels;
-	} snapshot;
+	struct snapshot snapshot;
 
 	/*
 	 * The patch version of the creator of this save.

@@ -223,6 +223,66 @@ int deserialize_file_location_table(struct sf_stream *restrict stream,
 	return 0;
 }
 
+/*
+ * Find out what type of snapshot pixel format the engine uses
+ * and return it.
+ */
+static enum pixel_format determine_snapshot_format(int engine_version)
+{
+	if (engine_version >= 11)
+		return PXFMT_RGBA;
+
+	return PXFMT_RGB;
+}
+
+static int get_snapshot_size(const struct snapshot *shot)
+{
+	int n_pixels = shot->width * shot->height;
+	switch (shot->pixel_format) {
+	case PXFMT_RGB: 	return 3 * n_pixels;
+	case PXFMT_RGBA: 	return 4 * n_pixels;
+	default:
+		assert(!"snapshot contains unknown/unhandled pixel format.");
+	}
+}
+
+/*
+ * Initialize a snapshot. The caller is responsible for destroying it when
+ * no longer needed.
+ */
+static int init_snapshot(struct snapshot *shot, enum pixel_format px_format,
+			 int width, int height)
+{
+	int shot_sz;
+	shot->pixel_format = px_format;
+	shot->width = width;
+	shot->height = height;
+	shot_sz = get_snapshot_size(shot);
+	shot->pixels = malloc(shot_sz);
+	if (!shot->pixels)
+		return -1;
+
+	return shot_sz;
+}
+
+/*
+ * Get a pointer to the raw pixel data of the snapshot.
+ */
+static unsigned char *get_snapshot_data(struct snapshot *shot)
+{
+	return shot->pixels;
+}
+
+/*
+ * Destroy a snapshot, freeing its held resources. No further actions
+ * should be performed on a destroyed snapshot.
+ */
+static void destroy_snapshot(struct snapshot *shot)
+{
+	free(shot->pixels);
+	shot->pixels = NULL;
+}
+
 struct game_save* create_game_save(enum game_title game_title,
 				   int engine_version)
 {
