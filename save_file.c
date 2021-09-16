@@ -311,37 +311,38 @@ void destroy_game_save(struct game_save *save)
 /*
  * Compress input_size bytes from istream to ostream using LZ4.
  *
- * Return S_OK on success.
- * On file error, return S_EFILE.
- * On memory allocation error, return S_EMEM.
- * On unexpected EOF, return S_EOF.
+ * Return the number of compressed bytes written to ostream.
+ * On file error, return -S_EFILE.
+ * On memory allocation error, return -S_EMEM.
+ * On unexpected EOF, return -S_EOF.
  */
 static int compress_lz4(FILE *restrict istream, FILE *restrict ostream,
 			int input_size)
 {
-	int ret = S_OK;
+	int ret;
 	int output_size = LZ4_compressBound(input_size);
 	int comp_size;
 	char *output_buffer = malloc(output_size);
 	char *input_buffer = malloc(input_size);
 	if (!output_buffer || !input_buffer) {
-		ret = S_EMEM;
+		ret = -S_EMEM;
 		goto out_cleanup;
 	}
 
 
-	if (fread(input_buffer, 1, input_size, istream) < input_size) {
-		ret = feof(istream) ? S_EOF : S_EFILE;
+	if ((int)fread(input_buffer, 1, input_size, istream) < input_size) {
+		ret = feof(istream) ? -S_EOF : -S_EFILE;
 		goto out_cleanup;
 	}
 
 	comp_size = LZ4_compress_default(input_buffer, output_buffer,
 					 input_size, output_size);
 
-	if (fwrite(output_buffer, 1, comp_size, ostream) < comp_size) {
-		ret = S_EFILE;
+	if ((int)fwrite(output_buffer, 1, comp_size, ostream) < comp_size) {
+		ret = -S_EFILE;
 		goto out_cleanup;
 	}
+	ret = comp_size;
 out_cleanup:
 	free(output_buffer);
 	free(input_buffer);
@@ -352,32 +353,39 @@ out_cleanup:
  * Decompress comp_size bytes into decomp_size bytes from istream to ostream
  * using LZ4.
  *
- * Return S_OK on success.
- * On file error, return S_EFILE.
- * On memory allocation error, return S_EMEM.
- * On unexpected EOF, return S_EOF.
+ * Return the number of decompressed bytes written to ostream.
+ * On file error, return -S_EFILE.
+ * On memory allocation error, return -S_EMEM.
+ * On unexpected EOF, return -S_EOF.
+ * On malformed data detection, return -S_EMALFORMED.
  */
 static int decompress_lz4(FILE *restrict istream, FILE *restrict ostream,
 			  int comp_size, int decomp_size)
 {
-	int ret = S_OK;
+	int ret;
+	int num_decomp;
 	char *comp_buf = malloc(comp_size);
 	char *decomp_buf = malloc(decomp_size);
 	if (!comp_buf || !decomp_buf) {
-		ret = S_EMEM;
+		ret = -S_EMEM;
 		goto out_cleanup;
 	}
-
-	if (fread(comp_buf, 1, comp_size, istream) < comp_size) {
-		ret = feof(istream) ? S_EOF : S_EFILE;
+	if ((int)fread(comp_buf, 1, comp_size, istream) < comp_size) {
+		ret = feof(istream) ? -S_EOF : -S_EFILE;
 		goto out_cleanup;
 	}
-	LZ4_decompress_safe(comp_buf, decomp_buf, comp_size, decomp_size);
-	if (fwrite(decomp_buf, 1, decomp_size, ostream) < decomp_size) {
-		ret = S_EFILE;
+	num_decomp = LZ4_decompress_safe(comp_buf, decomp_buf, comp_size,
+					 decomp_size);
+	if (num_decomp < 0) {
+		 /* Also possible that buffer capacity was insufficient... */
+		ret = -S_EMALFORMED;
 		goto out_cleanup;
 	}
-
+	if ((int)fwrite(decomp_buf, 1, decomp_size, ostream) < decomp_size) {
+		ret = -S_EFILE;
+		goto out_cleanup;
+	}
+	ret = num_decomp;
 out_cleanup:
 	free(comp_buf);
 	free(decomp_buf);
