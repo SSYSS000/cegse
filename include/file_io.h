@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef CEGSE_FILE_IO_H
 #define CEGSE_FILE_IO_H
 
+#include <endian.h>
 #include <stdio.h>
 #include "types.h"
 
@@ -77,7 +78,10 @@ int sf_read(struct save_file *restrict stream, void *restrict dest, size_t size)
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_put_u8(struct save_file *stream, u8 value);
+static inline int sf_put_u8(struct save_file *stream, u8 value)
+{
+	return sf_write(stream, &value, sizeof(value));
+}
 
 /*
  * Read an unsigned 8-bit integer from stream.
@@ -85,7 +89,11 @@ int sf_put_u8(struct save_file *stream, u8 value);
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_get_u8(struct save_file *restrict stream, u8 *restrict value);
+static inline int sf_get_u8(struct save_file *restrict stream,
+			    u8 *restrict value)
+{
+	return sf_read(stream, value, sizeof(*value));
+}
 
 /*
  * Write an unsigned 16-bit integer to stream.
@@ -93,7 +101,11 @@ int sf_get_u8(struct save_file *restrict stream, u8 *restrict value);
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_put_u16(struct save_file *stream, u16 value);
+static inline int sf_put_u16(struct save_file *stream, u16 value)
+{
+	value = htole16(value);
+	return sf_write(stream, &value, sizeof(value));
+}
 
 /*
  * Read an unsigned 16-bit integer from stream.
@@ -101,7 +113,14 @@ int sf_put_u16(struct save_file *stream, u16 value);
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_get_u16(struct save_file *restrict stream, u16 *restrict value);
+static inline int sf_get_u16(struct save_file *restrict stream,
+			     u16 *restrict value)
+{
+	int ret = sf_read(stream, value, sizeof(*value));
+	if (ret >= 0)
+		*value = le16toh(*value);
+	return ret;
+}
 
 /*
  * Write an unsigned 32-bit integer to stream.
@@ -109,7 +128,11 @@ int sf_get_u16(struct save_file *restrict stream, u16 *restrict value);
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_put_u32(struct save_file *stream, u32 value);
+static inline int sf_put_u32(struct save_file *stream, u32 value)
+{
+	value = htole32(value);
+	return sf_write(stream, &value, sizeof(value));
+}
 
 /*
  * Read an unsigned 32-bit integer from stream.
@@ -117,7 +140,14 @@ int sf_put_u32(struct save_file *stream, u32 value);
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_get_u32(struct save_file *restrict stream, u32 *restrict value);
+static inline int sf_get_u32(struct save_file *restrict stream,
+			     u32 *restrict value)
+{
+	int ret = sf_read(stream, value, sizeof(*value));
+	if (ret >= 0)
+		*value = le32toh(*value);
+	return ret;
+}
 
 /*
  * Write an unsigned 64-bit integer to stream.
@@ -125,7 +155,11 @@ int sf_get_u32(struct save_file *restrict stream, u32 *restrict value);
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_put_u64(struct save_file *stream, u64 value);
+static inline int sf_put_u64(struct save_file *stream, u64 value)
+{
+	value = htole64(value);
+	return sf_write(stream, &value, sizeof(value));
+}
 
 /*
  * Read an unsigned 64-bit integer from stream.
@@ -133,7 +167,14 @@ int sf_put_u64(struct save_file *stream, u64 value);
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_get_u64(struct save_file *restrict stream, u64 *restrict value);
+static inline int sf_get_u64(struct save_file *restrict stream,
+			     u64 *restrict value)
+{
+	int ret = sf_read(stream, value, sizeof(*value));
+	if (ret >= 0)
+		*value = le64toh(*value);
+	return ret;
+}
 
 /*
  * Write a signed 8-bit integer to stream.
@@ -141,7 +182,10 @@ int sf_get_u64(struct save_file *restrict stream, u64 *restrict value);
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_put_i8(struct save_file *stream, i8 value);
+static inline int sf_put_i8(struct save_file *stream, i8 value)
+{
+	return sf_put_u8(stream, (u8)value);
+}
 
 /*
  * Read a signed 8-bit integer from stream.
@@ -149,7 +193,11 @@ int sf_put_i8(struct save_file *stream, i8 value);
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_get_i8(struct save_file *restrict stream, i8 *restrict value);
+static inline int sf_get_i8(struct save_file *restrict stream,
+			    i8 *restrict value)
+{
+	return sf_get_u8(stream, (u8 *)value);
+}
 
 /*
  * Write a signed 16-bit integer to stream.
@@ -157,7 +205,10 @@ int sf_get_i8(struct save_file *restrict stream, i8 *restrict value);
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_put_i16(struct save_file *stream, i16 value);
+static inline int sf_put_i16(struct save_file *stream, i16 value)
+{
+	return sf_put_u16(stream, (u16)value);
+}
 
 /*
  * Read a signed 16-bit integer from stream.
@@ -165,7 +216,11 @@ int sf_put_i16(struct save_file *stream, i16 value);
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_get_i16(struct save_file *restrict stream, i16 *restrict value);
+static inline int sf_get_i16(struct save_file *restrict stream,
+			     i16 *restrict value)
+{
+	return sf_get_u16(stream, (u16 *)value);
+}
 
 /*
  * Write a signed 32-bit integer to stream.
@@ -173,7 +228,10 @@ int sf_get_i16(struct save_file *restrict stream, i16 *restrict value);
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_put_i32(struct save_file *stream, i32 value);
+static inline int sf_put_i32(struct save_file *stream, i32 value)
+{
+	return sf_put_u32(stream, (u32)value);
+}
 
 /*
  * Read a signed 32-bit integer from stream.
@@ -181,7 +239,11 @@ int sf_put_i32(struct save_file *stream, i32 value);
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_get_i32(struct save_file *restrict stream, i32 *restrict value);
+static inline int sf_get_i32(struct save_file *restrict stream,
+			     i32 *restrict value)
+{
+	return sf_get_u32(stream, (u32 *)value);
+}
 
 /*
  * Write a signed 64-bit integer to stream.
@@ -189,7 +251,10 @@ int sf_get_i32(struct save_file *restrict stream, i32 *restrict value);
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_put_i64(struct save_file *stream, i64 value);
+static inline int sf_put_i64(struct save_file *stream, i64 value)
+{
+	return sf_put_u64(stream, (u64)value);
+}
 
 /*
  * Read a signed 64-bit integer from stream.
@@ -197,7 +262,11 @@ int sf_put_i64(struct save_file *stream, i64 value);
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_get_i64(struct save_file *restrict stream, i64 *restrict value);
+static inline int sf_get_i64(struct save_file *restrict stream,
+			     i64 *restrict value)
+{
+	return sf_get_u64(stream, (u64 *)value);
+}
 
 /*
  * Write a 32-bit floating point to stream.
@@ -205,7 +274,10 @@ int sf_get_i64(struct save_file *restrict stream, i64 *restrict value);
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_put_f32(struct save_file *stream, f32 value);
+static inline int sf_put_f32(struct save_file *stream, f32 value)
+{
+	return sf_write(stream, &value, sizeof(value));
+}
 
 /*
  * Read a 32-bit floating point from stream.
@@ -213,7 +285,11 @@ int sf_put_f32(struct save_file *stream, f32 value);
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_get_f32(struct save_file *restrict stream, f32 *restrict value);
+static inline int sf_get_f32(struct save_file *restrict stream,
+			     f32 *restrict value)
+{
+	return sf_read(stream, value, sizeof(*value));
+}
 
 /*
  * Write a FILETIME to stream.
@@ -221,7 +297,10 @@ int sf_get_f32(struct save_file *restrict stream, f32 *restrict value);
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_put_filetime(struct save_file *stream, FILETIME value);
+static inline int sf_put_filetime(struct save_file *stream, FILETIME value)
+{
+	return sf_put_u64(stream, value);
+}
 
 /*
  * Read a FILETIME from stream.
@@ -229,7 +308,11 @@ int sf_put_filetime(struct save_file *stream, FILETIME value);
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_get_filetime(struct save_file *restrict stream, FILETIME *restrict value);
+static inline int sf_get_filetime(struct save_file *restrict stream,
+				  FILETIME *restrict value)
+{
+	return sf_get_u64(stream, value);
+}
 
 /*
  * Write a variable-size value to stream.

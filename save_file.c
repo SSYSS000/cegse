@@ -55,7 +55,7 @@ static const struct game supported_games[] = {
  * Convert a FILETIME to a time_t. Note that FILETIME is more accurate
  * than time_t.
  */
-static time_t filetime_to_time(FILETIME filetime)
+static inline time_t filetime_to_time(FILETIME filetime)
 {
 	return (time_t)(filetime / 10000000) - 11644473600;
 }
@@ -63,7 +63,7 @@ static time_t filetime_to_time(FILETIME filetime)
 /*
  * Convert a time_t to a FILETIME.
  */
-static FILETIME time_to_filetime(time_t t)
+static inline FILETIME time_to_filetime(time_t t)
 {
 	return (FILETIME)(t + 11644473600) * 10000000;
 }
@@ -229,7 +229,7 @@ static int init_snapshot(struct snapshot *shot, enum pixel_format px_format,
 /*
  * Get a pointer to the raw pixel data of the snapshot.
  */
-static unsigned char *get_snapshot_data(struct snapshot *shot)
+static inline unsigned char *get_snapshot_data(struct snapshot *shot)
 {
 	return shot->pixels;
 }
@@ -238,7 +238,7 @@ static unsigned char *get_snapshot_data(struct snapshot *shot)
  * Destroy a snapshot, freeing its held resources. No further actions
  * should be performed on a destroyed snapshot.
  */
-static void destroy_snapshot(struct snapshot *shot)
+static inline void destroy_snapshot(struct snapshot *shot)
 {
 	free(shot->pixels);
 	shot->pixels = NULL;

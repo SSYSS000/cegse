@@ -19,7 +19,6 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include <endian.h>
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
@@ -77,117 +76,6 @@ int sf_read(struct save_file *restrict stream, void *restrict dest, size_t size)
 	return -stream->status;
 }
 
-int sf_put_u8(struct save_file *stream, u8 value)
-{
-	return sf_write(stream, &value, sizeof(value));
-}
-
-int sf_get_u8(struct save_file *restrict stream, u8 *restrict value)
-{
-	return sf_read(stream, value, sizeof(*value));
-}
-
-int sf_put_u16(struct save_file *stream, u16 value)
-{
-	value = htole16(value);
-	return sf_write(stream, &value, sizeof(value));
-}
-
-int sf_get_u16(struct save_file *restrict stream, u16 *restrict value)
-{
-	int ret = sf_read(stream, value, sizeof(*value));
-	if (ret >= 0)
-		*value = le16toh(*value);
-	return ret;
-}
-
-int sf_put_u32(struct save_file *stream, u32 value)
-{
-	value = htole32(value);
-	return sf_write(stream, &value, sizeof(value));
-}
-
-int sf_get_u32(struct save_file *restrict stream, u32 *restrict value)
-{
-	int ret = sf_read(stream, value, sizeof(*value));
-	if (ret >= 0)
-		*value = le32toh(*value);
-	return ret;
-}
-
-int sf_put_u64(struct save_file *stream, u64 value)
-{
-	value = htole64(value);
-	return sf_write(stream, &value, sizeof(value));
-}
-
-int sf_get_u64(struct save_file *restrict stream, u64 *restrict value)
-{
-	int ret = sf_read(stream, value, sizeof(*value));
-	if (ret >= 0)
-		*value = le64toh(*value);
-	return ret;
-}
-
-int sf_put_i8(struct save_file *stream, i8 value)
-{
-	return sf_put_u8(stream, (u8)value);
-}
-
-int sf_get_i8(struct save_file *restrict stream, i8 *restrict value)
-{
-	return sf_get_u8(stream, (u8 *)value);
-}
-
-int sf_put_i16(struct save_file *stream, i16 value)
-{
-	return sf_put_u16(stream, (u16)value);
-}
-
-int sf_get_i16(struct save_file *restrict stream, i16 *restrict value)
-{
-	return sf_get_u16(stream, (u16 *)value);
-}
-
-int sf_put_i32(struct save_file *stream, i32 value)
-{
-	return sf_put_u32(stream, (u32)value);
-}
-
-int sf_get_i32(struct save_file *restrict stream, i32 *restrict value)
-{
-	return sf_get_u32(stream, (u32 *)value);
-}
-
-int sf_put_i64(struct save_file *stream, i64 value)
-{
-	return sf_put_u64(stream, (u64)value);
-}
-
-int sf_get_i64(struct save_file *restrict stream, i64 *restrict value)
-{
-	return sf_get_u64(stream, (u64 *)value);
-}
-
-int sf_put_f32(struct save_file *stream, f32 value)
-{
-	return sf_write(stream, &value, sizeof(value));
-}
-
-int sf_get_f32(struct save_file *restrict stream, f32 *restrict value)
-{
-	return sf_read(stream, value, sizeof(*value));
-}
-
-int sf_put_filetime(struct save_file *stream, FILETIME value)
-{
-	return sf_put_u64(stream, value);
-}
-
-int sf_get_filetime(struct save_file *restrict stream, FILETIME *restrict value)
-{
-	return sf_get_u64(stream, value);
-}
 
 int sf_put_vsval(struct save_file *stream, u32 value)
 {
