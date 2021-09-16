@@ -29,7 +29,8 @@ enum status_code {
 	S_EOF,		/* End-of-file */
 	S_EFILE,	/* File error */
 	S_EMEM,		/* Memory allocation error */
-	S_ESIZE 	/* Size error; buffer too small or size mismatch */
+	S_ESIZE, 	/* Size error; buffer too small or size mismatch */
+	S_EMALFORMED	/* Data malformed */
 };
 
 typedef int8_t i8;
