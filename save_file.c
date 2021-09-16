@@ -244,29 +244,25 @@ static void destroy_snapshot(struct snapshot *shot)
 	shot->pixels = NULL;
 }
 
-int extract_snapshot(struct save_file *restrict istream,
-		     struct snapshot *restrict shot, int width, int height)
+int snapshot_from_stream(struct save_file *restrict istream,
+			 struct snapshot *restrict shot, int width, int height)
 {
 	enum pixel_format px_format;
 	int shot_sz;
-	unsigned char *shot_data = NULL;
 
 	px_format = determine_snapshot_format(istream->engine_version);
 	shot_sz = init_snapshot(shot, px_format, width, height);
-	if (shot_sz < 0) {
+	if (shot_sz < 0)
 		return shot_sz;
-	}
 
-	shot_data = get_snapshot_data(shot);
-	if (fread(shot_data, 1, shot_sz, istream->stream) < shot_sz) {
-		goto out_file_error;
-	}
+	if (sf_read(istream, get_snapshot_data(shot), shot_sz) < 0)
+		goto out_stream_error;
 
 	return S_OK;
 
-out_file_error:
+out_stream_error:
 	destroy_snapshot(shot);
-	return -S_EFILE;
+	return -istream->status;
 }
 
 struct game_save* create_game_save(enum game_title game_title,
