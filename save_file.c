@@ -83,7 +83,7 @@ static const struct game *identify_game_save_game(FILE *stream)
 
 	for (i = supported_games; i != ARRAY_END(supported_games); ++i) {
 		rc = file_compare(stream, i->magic_bytes, i->magic_size);
-		if (rc == -1)
+		if (rc == -S_EFILE)
 			return NULL;
 		else if (rc == 0)
 			return i;
@@ -242,6 +242,31 @@ static void destroy_snapshot(struct snapshot *shot)
 {
 	free(shot->pixels);
 	shot->pixels = NULL;
+}
+
+int extract_snapshot(struct save_file *restrict istream,
+		     struct snapshot *restrict shot, int width, int height)
+{
+	enum pixel_format px_format;
+	int shot_sz;
+	unsigned char *shot_data = NULL;
+
+	px_format = determine_snapshot_format(istream->engine_version);
+	shot_sz = init_snapshot(shot, px_format, width, height);
+	if (shot_sz < 0) {
+		return shot_sz;
+	}
+
+	shot_data = get_snapshot_data(shot);
+	if (fread(shot_data, 1, shot_sz, istream->stream) < shot_sz) {
+		goto out_file_error;
+	}
+
+	return S_OK;
+
+out_file_error:
+	destroy_snapshot(shot);
+	return -S_EFILE;
 }
 
 struct game_save* create_game_save(enum game_title game_title,
