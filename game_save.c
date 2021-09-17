@@ -114,8 +114,8 @@ static void compose_file_header(struct file_header *restrict header,
 	header->save_num = save->save_num;
 	/* TODO: Copy player info here */
 	header->filetime = time_to_filetime(save->time_saved);
-	header->snapshot_width = save->snapshot.width;
-	header->snapshot_height = save->snapshot.height;
+	header->snapshot_width = save->snapshot->width;
+	header->snapshot_height = save->snapshot->height;
 }
 
 

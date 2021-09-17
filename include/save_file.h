@@ -27,11 +27,49 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "types.h"
 #include "snapshot.h"
 
-struct save_file {
-	FILE *stream;
+struct save_stream {
+	FILE		*stream;
 	enum status_code status;
-	u32 engine_version;		/* Creation Engine version */
-	u8 format;
+};
+
+struct file_header {
+	u32 	engine_version;		/* Creation Engine version */
+	u32 	save_num;
+	char 	ply_name[64];		/* Player name */
+	u32 	ply_level;
+	char 	ply_location[128];
+	char 	game_time[48];		/* Playtime or in-game date */
+	char 	ply_race_id[48];
+	u16 	ply_sex;
+	f32 	ply_current_xp;
+	f32 	ply_target_xp;
+	FILETIME filetime;
+	u32 	snapshot_width;
+	u32 	snapshot_height;
+	u16 	compression_type;
+};
+
+struct file_location_table {
+	u32 form_id_array_count_offset;
+	u32 unknown_table_3_offset;
+	u32 global_data_table_1_offset;
+	u32 global_data_table_2_offset;
+	u32 change_forms_offset;
+	u32 global_data_table_3_offset;
+	u32 global_data_table_1_count;
+	u32 global_data_table_2_count;
+	u32 global_data_table_3_count;
+	u32 change_form_count;
+};
+
+struct game_save;
+
+struct transfer_context {
+	struct save_stream stream;
+	struct file_header header;
+	struct file_location_table locations;
+	u8		   format;
+	struct game_save   *save;
 };
 
 /*
@@ -59,7 +97,7 @@ int file_compare(FILE *restrict stream, const void *restrict data, int num);
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_write(struct save_file *restrict stream, const void *restrict src,
+int sf_write(struct save_stream *restrict stream, const void *restrict src,
 	     size_t size);
 
 /*
@@ -71,7 +109,8 @@ int sf_write(struct save_file *restrict stream, const void *restrict src,
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_read(struct save_file *restrict stream, void *restrict dest, size_t size);
+int sf_read(struct save_stream *restrict stream, void *restrict dest,
+	size_t size);
 
 /*
  * Write an unsigned 8-bit integer to stream.
@@ -79,7 +118,7 @@ int sf_read(struct save_file *restrict stream, void *restrict dest, size_t size)
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-static inline int sf_put_u8(struct save_file *stream, u8 value)
+static inline int sf_put_u8(struct save_stream *stream, u8 value)
 {
 	return sf_write(stream, &value, sizeof(value));
 }
@@ -90,7 +129,7 @@ static inline int sf_put_u8(struct save_file *stream, u8 value)
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-static inline int sf_get_u8(struct save_file *restrict stream,
+static inline int sf_get_u8(struct save_stream *restrict stream,
 			    u8 *restrict value)
 {
 	return sf_read(stream, value, sizeof(*value));
@@ -102,7 +141,7 @@ static inline int sf_get_u8(struct save_file *restrict stream,
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-static inline int sf_put_u16(struct save_file *stream, u16 value)
+static inline int sf_put_u16(struct save_stream *stream, u16 value)
 {
 	value = htole16(value);
 	return sf_write(stream, &value, sizeof(value));
@@ -114,7 +153,7 @@ static inline int sf_put_u16(struct save_file *stream, u16 value)
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-static inline int sf_get_u16(struct save_file *restrict stream,
+static inline int sf_get_u16(struct save_stream *restrict stream,
 			     u16 *restrict value)
 {
 	int ret = sf_read(stream, value, sizeof(*value));
@@ -129,7 +168,7 @@ static inline int sf_get_u16(struct save_file *restrict stream,
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-static inline int sf_put_u32(struct save_file *stream, u32 value)
+static inline int sf_put_u32(struct save_stream *stream, u32 value)
 {
 	value = htole32(value);
 	return sf_write(stream, &value, sizeof(value));
@@ -141,7 +180,7 @@ static inline int sf_put_u32(struct save_file *stream, u32 value)
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-static inline int sf_get_u32(struct save_file *restrict stream,
+static inline int sf_get_u32(struct save_stream *restrict stream,
 			     u32 *restrict value)
 {
 	int ret = sf_read(stream, value, sizeof(*value));
@@ -156,7 +195,7 @@ static inline int sf_get_u32(struct save_file *restrict stream,
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-static inline int sf_put_u64(struct save_file *stream, u64 value)
+static inline int sf_put_u64(struct save_stream *stream, u64 value)
 {
 	value = htole64(value);
 	return sf_write(stream, &value, sizeof(value));
@@ -168,7 +207,7 @@ static inline int sf_put_u64(struct save_file *stream, u64 value)
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-static inline int sf_get_u64(struct save_file *restrict stream,
+static inline int sf_get_u64(struct save_stream *restrict stream,
 			     u64 *restrict value)
 {
 	int ret = sf_read(stream, value, sizeof(*value));
@@ -183,7 +222,7 @@ static inline int sf_get_u64(struct save_file *restrict stream,
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-static inline int sf_put_i8(struct save_file *stream, i8 value)
+static inline int sf_put_i8(struct save_stream *stream, i8 value)
 {
 	return sf_put_u8(stream, (u8)value);
 }
@@ -194,7 +233,7 @@ static inline int sf_put_i8(struct save_file *stream, i8 value)
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-static inline int sf_get_i8(struct save_file *restrict stream,
+static inline int sf_get_i8(struct save_stream *restrict stream,
 			    i8 *restrict value)
 {
 	return sf_get_u8(stream, (u8 *)value);
@@ -206,7 +245,7 @@ static inline int sf_get_i8(struct save_file *restrict stream,
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-static inline int sf_put_i16(struct save_file *stream, i16 value)
+static inline int sf_put_i16(struct save_stream *stream, i16 value)
 {
 	return sf_put_u16(stream, (u16)value);
 }
@@ -217,7 +256,7 @@ static inline int sf_put_i16(struct save_file *stream, i16 value)
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-static inline int sf_get_i16(struct save_file *restrict stream,
+static inline int sf_get_i16(struct save_stream *restrict stream,
 			     i16 *restrict value)
 {
 	return sf_get_u16(stream, (u16 *)value);
@@ -229,7 +268,7 @@ static inline int sf_get_i16(struct save_file *restrict stream,
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-static inline int sf_put_i32(struct save_file *stream, i32 value)
+static inline int sf_put_i32(struct save_stream *stream, i32 value)
 {
 	return sf_put_u32(stream, (u32)value);
 }
@@ -240,7 +279,7 @@ static inline int sf_put_i32(struct save_file *stream, i32 value)
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-static inline int sf_get_i32(struct save_file *restrict stream,
+static inline int sf_get_i32(struct save_stream *restrict stream,
 			     i32 *restrict value)
 {
 	return sf_get_u32(stream, (u32 *)value);
@@ -252,7 +291,7 @@ static inline int sf_get_i32(struct save_file *restrict stream,
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-static inline int sf_put_i64(struct save_file *stream, i64 value)
+static inline int sf_put_i64(struct save_stream *stream, i64 value)
 {
 	return sf_put_u64(stream, (u64)value);
 }
@@ -263,7 +302,7 @@ static inline int sf_put_i64(struct save_file *stream, i64 value)
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-static inline int sf_get_i64(struct save_file *restrict stream,
+static inline int sf_get_i64(struct save_stream *restrict stream,
 			     i64 *restrict value)
 {
 	return sf_get_u64(stream, (u64 *)value);
@@ -275,7 +314,7 @@ static inline int sf_get_i64(struct save_file *restrict stream,
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-static inline int sf_put_f32(struct save_file *stream, f32 value)
+static inline int sf_put_f32(struct save_stream *stream, f32 value)
 {
 	return sf_write(stream, &value, sizeof(value));
 }
@@ -286,7 +325,7 @@ static inline int sf_put_f32(struct save_file *stream, f32 value)
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-static inline int sf_get_f32(struct save_file *restrict stream,
+static inline int sf_get_f32(struct save_stream *restrict stream,
 			     f32 *restrict value)
 {
 	return sf_read(stream, value, sizeof(*value));
@@ -298,7 +337,7 @@ static inline int sf_get_f32(struct save_file *restrict stream,
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-static inline int sf_put_filetime(struct save_file *stream, FILETIME value)
+static inline int sf_put_filetime(struct save_stream *stream, FILETIME value)
 {
 	return sf_put_u64(stream, value);
 }
@@ -309,7 +348,7 @@ static inline int sf_put_filetime(struct save_file *stream, FILETIME value)
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-static inline int sf_get_filetime(struct save_file *restrict stream,
+static inline int sf_get_filetime(struct save_stream *restrict stream,
 				  FILETIME *restrict value)
 {
 	return sf_get_u64(stream, value);
@@ -321,7 +360,7 @@ static inline int sf_get_filetime(struct save_file *restrict stream,
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_put_vsval(struct save_file *stream, u32 value);
+int sf_put_vsval(struct save_stream *stream, u32 value);
 
 /*
  * Read a variable-size value from stream.
@@ -329,7 +368,7 @@ int sf_put_vsval(struct save_file *stream, u32 value);
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_get_vsval(struct save_file *restrict stream, u32 *restrict value);
+int sf_get_vsval(struct save_stream *restrict stream, u32 *restrict value);
 
 /*
  * Write a string to stream without the terminating null-byte character,
@@ -338,7 +377,7 @@ int sf_get_vsval(struct save_file *restrict stream, u32 *restrict value);
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
-int sf_put_s(struct save_file *restrict stream, const char *restrict string);
+int sf_put_s(struct save_stream *restrict stream, const char *restrict string);
 
 /*
  * Read a string, prefixed by its 16-bit length, from stream. The caller is
@@ -350,7 +389,7 @@ int sf_put_s(struct save_file *restrict stream, const char *restrict string);
  * On success, return the length of the string. Otherwise,
  * return the stream status negated.
  */
-int sf_get_s(struct save_file *restrict stream, char **restrict dest);
+int sf_get_s(struct save_stream *restrict stream, char **restrict dest);
 
 /*
  * Read a string, prefixed by its 16-bit length, from stream to dest.
@@ -362,75 +401,40 @@ int sf_get_s(struct save_file *restrict stream, char **restrict dest);
  * On success, return the length of the string. Otherwise,
  * return the stream status negated.
  */
-int sf_get_ns(struct save_file *restrict stream, char *restrict dest,
+int sf_get_ns(struct save_stream *restrict stream, char *restrict dest,
 	      size_t dest_size);
-
-struct file_header {
-	u32 	engine_version;		/* Creation Engine version */
-	u32 	save_num;
-	char 	ply_name[64];		/* Player name */
-	u32 	ply_level;
-	char 	ply_location[128];
-	char 	game_time[48];		/* Playtime or in-game date */
-	char 	ply_race_id[48];
-	u16 	ply_sex;
-	f32 	ply_current_xp;
-	f32 	ply_target_xp;
-	FILETIME filetime;
-	u32 	snapshot_width;
-	u32 	snapshot_height;
-	u16 	compression_type;
-};
 
 /*
  * Serialize a file header to stream. Set stream status on error.
  *
  * On success, return nonnegative integer.
  */
-int serialize_file_header(struct save_file *restrict stream,
-	const struct file_header *restrict header);
+int serialize_file_header(struct transfer_context *restrict ctx);
 
 /*
  * Deserialize a file header from stream. Set stream status on error.
  *
  * On success, return nonnegative integer.
  */
-int deserialize_file_header(struct save_file *restrict stream,
-	struct file_header *restrict header);
-
-struct file_location_table {
-	u32 form_id_array_count_offset;
-	u32 unknown_table_3_offset;
-	u32 global_data_table_1_offset;
-	u32 global_data_table_2_offset;
-	u32 change_forms_offset;
-	u32 global_data_table_3_offset;
-	u32 global_data_table_1_count;
-	u32 global_data_table_2_count;
-	u32 global_data_table_3_count;
-	u32 change_form_count;
-};
+int deserialize_file_header(struct transfer_context *restrict ctx);
 
 /*
  * Serialize a file location table to stream. Set stream status on error.
  *
  * On success, return nonnegative integer.
  */
-int serialize_file_location_table(struct save_file *restrict stream,
-	const struct file_location_table *restrict table);
+int serialize_file_location_table(struct transfer_context *restrict ctx);
 
 /*
  * Deserialize a file location table from stream. Set stream status on error.
  *
  * On success, return nonnegative integer.
  */
-int deserialize_file_location_table(struct save_file *restrict stream,
-	struct file_location_table *restrict table);
+int deserialize_file_location_table(struct transfer_context *restrict ctx);
 
 /*
  *
  */
-int snapshot_from_stream(struct save_file *restrict istream,
-	struct snapshot *restrict shot, int width, int height);
+int snapshot_from_stream(struct transfer_context *restrict ctx);
 
 #endif /* CEGSE_SAVE_FILE_H */

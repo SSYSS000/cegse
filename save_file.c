@@ -46,7 +46,7 @@ int file_compare(FILE *restrict stream, const void *restrict data, int num)
 	return 0;
 }
 
-int sf_write(struct save_file *restrict stream, const void *restrict src,
+int sf_write(struct save_stream *restrict stream, const void *restrict src,
 	     size_t size)
 {
 	size_t n_written;
@@ -61,7 +61,7 @@ int sf_write(struct save_file *restrict stream, const void *restrict src,
 	return -stream->status;
 }
 
-int sf_read(struct save_file *restrict stream, void *restrict dest, size_t size)
+int sf_read(struct save_stream *restrict stream, void *restrict dest, size_t size)
 {
 	size_t n_read;
 	if (stream->status != S_OK)
@@ -79,7 +79,7 @@ int sf_read(struct save_file *restrict stream, void *restrict dest, size_t size)
 }
 
 
-int sf_put_vsval(struct save_file *stream, u32 value)
+int sf_put_vsval(struct save_stream *stream, u32 value)
 {
 	u32 i;
 	if (value < 0x40u)
@@ -95,7 +95,7 @@ int sf_put_vsval(struct save_file *stream, u32 value)
 	return -stream->status;
 }
 
-int sf_get_vsval(struct save_file *restrict stream, u32 *restrict value)
+int sf_get_vsval(struct save_stream *restrict stream, u32 *restrict value)
 {
 	u8 byte;
 	u32 i;
@@ -115,7 +115,7 @@ int sf_get_vsval(struct save_file *restrict stream, u32 *restrict value)
 	return 0;
 }
 
-int sf_put_s(struct save_file *restrict stream, const char *restrict string)
+int sf_put_s(struct save_stream *restrict stream, const char *restrict string)
 {
 	u16 len = strlen(string);
 	sf_put_u16(stream, len);
@@ -123,7 +123,7 @@ int sf_put_s(struct save_file *restrict stream, const char *restrict string)
 	return -stream->status;
 }
 
-int sf_get_s(struct save_file *restrict stream, char **restrict dest)
+int sf_get_s(struct save_stream *restrict stream, char **restrict dest)
 {
 	char *string;
 	u16 len;
@@ -147,7 +147,7 @@ int sf_get_s(struct save_file *restrict stream, char **restrict dest)
 	return len;
 }
 
-int sf_get_ns(struct save_file *restrict stream, char *restrict dest,
+int sf_get_ns(struct save_stream *restrict stream, char *restrict dest,
 	      size_t dest_size)
 {
 	u16 len;
@@ -167,33 +167,32 @@ int sf_get_ns(struct save_file *restrict stream, char *restrict dest,
 	return len;
 }
 
-int serialize_file_header(struct save_file *restrict stream,
-	const struct file_header *restrict header)
+int serialize_file_header(struct transfer_context *restrict ctx)
 {
-	assert(header->engine_version == stream->engine_version);
-	sf_put_u32(stream, header->engine_version);
-	sf_put_u32(stream, header->save_num);
-	sf_put_s(stream, header->ply_name);
-	sf_put_u32(stream, header->ply_level);
-	sf_put_s(stream, header->ply_location);
-	sf_put_s(stream, header->game_time);
-	sf_put_s(stream, header->ply_race_id);
-	sf_put_u16(stream, header->ply_sex);
-	sf_put_f32(stream, header->ply_current_xp);
-	sf_put_f32(stream, header->ply_target_xp);
-	sf_put_filetime(stream, header->filetime);
-	sf_put_u32(stream, header->snapshot_width);
-	sf_put_u32(stream, header->snapshot_height);
+	sf_put_u32(&ctx->stream, ctx->header.engine_version);
+	sf_put_u32(&ctx->stream, ctx->header.save_num);
+	sf_put_s  (&ctx->stream, ctx->header.ply_name);
+	sf_put_u32(&ctx->stream, ctx->header.ply_level);
+	sf_put_s  (&ctx->stream, ctx->header.ply_location);
+	sf_put_s  (&ctx->stream, ctx->header.game_time);
+	sf_put_s  (&ctx->stream, ctx->header.ply_race_id);
+	sf_put_u16(&ctx->stream, ctx->header.ply_sex);
+	sf_put_f32(&ctx->stream, ctx->header.ply_current_xp);
+	sf_put_f32(&ctx->stream, ctx->header.ply_target_xp);
+	sf_put_filetime(&ctx->stream, ctx->header.filetime);
+	sf_put_u32(&ctx->stream, ctx->header.snapshot_width);
+	sf_put_u32(&ctx->stream, ctx->header.snapshot_height);
 
-	if (stream->engine_version >= 12u)
-		sf_put_u16(stream, header->compression_type);
+	if (ctx->header.engine_version >= 12u)
+		sf_put_u16(&ctx->stream, ctx->header.compression_type);
 
-	return -stream->status;
+	return -ctx->stream.status;
 }
 
-int deserialize_file_header(struct save_file *restrict stream,
-	struct file_header *restrict header)
+int deserialize_file_header(struct transfer_context *restrict ctx)
 {
+	struct save_stream *restrict stream = &ctx->stream;
+	struct file_header *restrict header = &ctx->header;
 	sf_get_u32(stream, &header->engine_version);
 	sf_get_u32(stream, &header->save_num);
 	sf_get_ns (stream, header->ply_name, sizeof(header->ply_name));
@@ -214,66 +213,67 @@ int deserialize_file_header(struct save_file *restrict stream,
 	return -stream->status;
 }
 
-int serialize_file_location_table(struct save_file *restrict stream,
-	const struct file_location_table *restrict table)
+int serialize_file_location_table(struct transfer_context *restrict ctx)
 {
-	sf_put_u32(stream, table->form_id_array_count_offset);
-	sf_put_u32(stream, table->unknown_table_3_offset);
-	sf_put_u32(stream, table->global_data_table_1_offset);
-	sf_put_u32(stream, table->global_data_table_2_offset);
-	sf_put_u32(stream, table->change_forms_offset);
-	sf_put_u32(stream, table->global_data_table_3_offset);
-	sf_put_u32(stream, table->global_data_table_1_count);
-	sf_put_u32(stream, table->global_data_table_2_count);
-	sf_put_u32(stream, table->global_data_table_3_count);
-	sf_put_u32(stream, table->change_form_count);
+	sf_put_u32(&ctx->stream, ctx->locations.form_id_array_count_offset);
+	sf_put_u32(&ctx->stream, ctx->locations.unknown_table_3_offset);
+	sf_put_u32(&ctx->stream, ctx->locations.global_data_table_1_offset);
+	sf_put_u32(&ctx->stream, ctx->locations.global_data_table_2_offset);
+	sf_put_u32(&ctx->stream, ctx->locations.change_forms_offset);
+	sf_put_u32(&ctx->stream, ctx->locations.global_data_table_3_offset);
+	sf_put_u32(&ctx->stream, ctx->locations.global_data_table_1_count);
+	sf_put_u32(&ctx->stream, ctx->locations.global_data_table_2_count);
+	sf_put_u32(&ctx->stream, ctx->locations.global_data_table_3_count);
+	sf_put_u32(&ctx->stream, ctx->locations.change_form_count);
 
 	/* Write unused bytes. */
 	for (int i = 0; i < 15; ++i)
-		sf_put_u32(stream, 0u);
+		sf_put_u32(&ctx->stream, 0u);
 
-	return -stream->status;
+	return -ctx->stream.status;
 }
 
-int deserialize_file_location_table(struct save_file *restrict stream,
-	struct file_location_table *restrict table)
+int deserialize_file_location_table(struct transfer_context *restrict ctx)
 {
-	sf_get_u32(stream, &table->form_id_array_count_offset);
-	sf_get_u32(stream, &table->unknown_table_3_offset);
-	sf_get_u32(stream, &table->global_data_table_1_offset);
-	sf_get_u32(stream, &table->global_data_table_2_offset);
-	sf_get_u32(stream, &table->change_forms_offset);
-	sf_get_u32(stream, &table->global_data_table_3_offset);
-	sf_get_u32(stream, &table->global_data_table_1_count);
-	sf_get_u32(stream, &table->global_data_table_2_count);
-	sf_get_u32(stream, &table->global_data_table_3_count);
-	sf_get_u32(stream, &table->change_form_count);
+	sf_get_u32(&ctx->stream, &ctx->locations.form_id_array_count_offset);
+	sf_get_u32(&ctx->stream, &ctx->locations.unknown_table_3_offset);
+	sf_get_u32(&ctx->stream, &ctx->locations.global_data_table_1_offset);
+	sf_get_u32(&ctx->stream, &ctx->locations.global_data_table_2_offset);
+	sf_get_u32(&ctx->stream, &ctx->locations.change_forms_offset);
+	sf_get_u32(&ctx->stream, &ctx->locations.global_data_table_3_offset);
+	sf_get_u32(&ctx->stream, &ctx->locations.global_data_table_1_count);
+	sf_get_u32(&ctx->stream, &ctx->locations.global_data_table_2_count);
+	sf_get_u32(&ctx->stream, &ctx->locations.global_data_table_3_count);
+	sf_get_u32(&ctx->stream, &ctx->locations.change_form_count);
 	/* Skip unused. */
-	fseek(stream->stream, sizeof(u32[15]), SEEK_CUR);
+	fseek(ctx->stream.stream, sizeof(u32[15]), SEEK_CUR);
 
-	return -stream->status;
+	return -ctx->stream.status;
 }
 
-int snapshot_from_stream(struct save_file *restrict istream,
-	struct snapshot *restrict shot, int width, int height)
+int snapshot_from_stream(struct transfer_context *restrict ctx)
 {
 	enum pixel_format px_format;
+	struct snapshot *shot;
 	int shot_sz;
 
-	px_format = determine_snapshot_format(istream->engine_version);
-	shot_sz = init_snapshot(shot, px_format, width, height);
-	if (shot_sz < 0) {
-		istream->status = S_EMEM;
-		return -istream->status;
+	px_format = determine_snapshot_format(ctx->header.engine_version);
+	shot = create_snapshot(px_format, ctx->header.snapshot_width,
+		ctx->header.snapshot_height);
+	if (!shot) {
+		ctx->stream.status = S_EMEM;
+		return -ctx->stream.status;
 	}
-	if (sf_read(istream, get_snapshot_data(shot), shot_sz) < 0)
+	shot_sz = get_snapshot_size(shot);
+	if (sf_read(&ctx->stream, get_snapshot_data(shot), shot_sz) < 0)
 		goto out_stream_error;
 
+	ctx->save->snapshot = shot;
 	return S_OK;
 
 out_stream_error:
 	destroy_snapshot(shot);
-	return -istream->status;
+	return -ctx->stream.status;
 }
 
 /*

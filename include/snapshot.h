@@ -38,6 +38,12 @@ struct snapshot {
 enum pixel_format determine_snapshot_format(int engine_version);
 
 /*
+ * Calculate the size of the snapshot pixels in bytes
+ * and return it.
+ */
+int get_snapshot_size(const struct snapshot *shot);
+
+/*
  * Initialize a snapshot. The caller is responsible for destroying it when
  * no longer needed.
  *
