@@ -252,9 +252,10 @@ int snapshot_from_stream(struct save_file *restrict istream,
 
 	px_format = determine_snapshot_format(istream->engine_version);
 	shot_sz = init_snapshot(shot, px_format, width, height);
-	if (shot_sz < 0)
-		return shot_sz;
-
+	if (shot_sz < 0) {
+		istream->status = S_EMEM;
+		return -istream->status;
+	}
 	if (sf_read(istream, get_snapshot_data(shot), shot_sz) < 0)
 		goto out_stream_error;
 
