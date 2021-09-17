@@ -126,15 +126,16 @@ int sf_get_s(struct save_file *restrict stream, char **restrict dest)
 	u16 len;
 	char *string;
 
-	sf_get_u16(stream, &len);
+	if (sf_get_u16(stream, &len) < 0)
+		return -stream->status;
+
 	string = malloc(len + 1);
 	if (!string) {
 		stream->status = S_EMEM;
 		return -S_EMEM;
 	}
 
-	sf_read(stream, string, len);
-	if (stream->status != S_OK) {
+	if (sf_read(stream, string, len) < 0) {
 		free(string);
 		return -stream->status;
 	}
@@ -149,16 +150,16 @@ int sf_get_ns(struct save_file *restrict stream, char *restrict dest,
 {
 	u16 len;
 
-	sf_get_u16(stream, &len);
+	if (sf_get_u16(stream, &len) < 0)
+		return -stream->status;
 
 	if (dest_size < len + 1u) {
 		stream->status = S_ESIZE;
 		return -S_ESIZE;
 	}
 
-	if (sf_read(stream, dest, len) < 0) {
+	if (sf_read(stream, dest, len) < 0)
 		return -stream->status;
-	}
 
 	dest[len] = '\0';
 	return len;
