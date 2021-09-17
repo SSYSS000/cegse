@@ -121,7 +121,7 @@ static void compose_file_header(struct file_header *restrict header,
 
 void destroy_game_save(struct game_save *save)
 {
-	free(save->snapshot.pixels);
+	destroy_snapshot(save->snapshot);
 
 	for (int i = 0; i < save->num_plugins; ++i)
 		free(save->plugins[i]);
@@ -130,6 +130,5 @@ void destroy_game_save(struct game_save *save)
 	for (int i = 0; i < save->num_light_plugins; ++i)
 		free(save->light_plugins[i]);
 	free(save->light_plugins);
-
 	free(save);
 }
