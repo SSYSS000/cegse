@@ -38,7 +38,7 @@ struct game_save {
 
 	time_t time_saved;
 
-	struct snapshot snapshot;
+	struct snapshot *snapshot;
 
 	/*
 	 * The patch version of the creator of this save.
