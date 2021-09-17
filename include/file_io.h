@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <endian.h>
 #include <stdio.h>
 #include "types.h"
+#include "snapshot.h"
 
 struct save_file {
 	FILE *stream;
@@ -363,5 +364,73 @@ int sf_get_s(struct save_file *restrict stream, char **restrict dest);
  */
 int sf_get_ns(struct save_file *restrict stream, char *restrict dest,
 	      size_t dest_size);
+
+struct file_header {
+	u32 	engine_version;		/* Creation Engine version */
+	u32 	save_num;
+	char 	ply_name[64];		/* Player name */
+	u32 	ply_level;
+	char 	ply_location[128];
+	char 	game_time[48];		/* Playtime or in-game date */
+	char 	ply_race_id[48];
+	u16 	ply_sex;
+	f32 	ply_current_xp;
+	f32 	ply_target_xp;
+	FILETIME filetime;
+	u32 	snapshot_width;
+	u32 	snapshot_height;
+	u16 	compression_type;
+};
+
+/*
+ * Serialize a file header to stream. Set stream status on error.
+ *
+ * On success, return nonnegative integer.
+ */
+int serialize_file_header(struct save_file *restrict stream,
+	const struct file_header *restrict header);
+
+/*
+ * Deserialize a file header from stream. Set stream status on error.
+ *
+ * On success, return nonnegative integer.
+ */
+int deserialize_file_header(struct save_file *restrict stream,
+	struct file_header *restrict header);
+
+struct file_location_table {
+	u32 form_id_array_count_offset;
+	u32 unknown_table_3_offset;
+	u32 global_data_table_1_offset;
+	u32 global_data_table_2_offset;
+	u32 change_forms_offset;
+	u32 global_data_table_3_offset;
+	u32 global_data_table_1_count;
+	u32 global_data_table_2_count;
+	u32 global_data_table_3_count;
+	u32 change_form_count;
+};
+
+/*
+ * Serialize a file location table to stream. Set stream status on error.
+ *
+ * On success, return nonnegative integer.
+ */
+int serialize_file_location_table(struct save_file *restrict stream,
+	const struct file_location_table *restrict table);
+
+/*
+ * Deserialize a file location table from stream. Set stream status on error.
+ *
+ * On success, return nonnegative integer.
+ */
+int deserialize_file_location_table(struct save_file *restrict stream,
+	struct file_location_table *restrict table);
+
+/*
+ *
+ */
+int snapshot_from_stream(struct save_file *restrict istream,
+	struct snapshot *restrict shot, int width, int height);
 
 #endif // CEGSE_FILE_IO_H

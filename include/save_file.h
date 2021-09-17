@@ -25,86 +25,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <time.h>
 #include "file_io.h"
 #include "types.h"
-
-struct file_header {
-	u32 engine_version;	/* Creation Engine version */
-	u32 save_num;
-	char ply_name[64];	/* Player name */
-	u32 ply_level;
-	char ply_location[128];
-	char game_time[48];	/* Playtime or in-game date */
-	char ply_race_id[48];
-	u16 ply_sex;
-	f32 ply_current_xp;
-	f32 ply_target_xp;
-	FILETIME filetime;
-	u32 snapshot_width;
-	u32 snapshot_height;
-	u16 compression_type;
-};
-
-/*
- * Serialize a file header to stream.
- *
- * On success, return nonnegative integer.
- * On failure, return -1.
- */
-int serialize_file_header(struct save_file *restrict stream,
-			  const struct file_header *restrict header);
-
-/*
- * Deserialize a file header from stream.
- *
- * On success, return nonnegative integer.
- * On failure, return -1.
- */
-int deserialize_file_header(struct save_file *restrict stream,
-			    struct file_header *restrict header);
-
-struct file_location_table {
-	u32 form_id_array_count_offset;
-	u32 unknown_table_3_offset;
-	u32 global_data_table_1_offset;
-	u32 global_data_table_2_offset;
-	u32 change_forms_offset;
-	u32 global_data_table_3_offset;
-	u32 global_data_table_1_count;
-	u32 global_data_table_2_count;
-	u32 global_data_table_3_count;
-	u32 change_form_count;
-};
-
-/*
- * Serialize a file location table to stream.
- *
- * On success, return a nonnegative integer.
- * On failure, return a negative integer.
- */
-int serialize_file_location_table(
-	struct save_file *restrict stream,
-	const struct file_location_table *restrict table);
-
-/*
- * Deserialize a file location table from stream.
- *
- * On success, return a nonnegative integer.
- * On failure, return a negative integer.
- */
-int deserialize_file_location_table(struct save_file *restrict stream,
-				    struct file_location_table *restrict table);
+#include "snapshot.h"
 
 enum game_title {
 	SKYRIM,
 	FALLOUT4
-};
-
-enum pixel_format { PXFMT_RGB, PXFMT_RGBA };
-
-struct snapshot {
-	int width;
-	int height;
-	enum pixel_format pixel_format;
-	unsigned char *pixels;
 };
 
 struct game_save {
