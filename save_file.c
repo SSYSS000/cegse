@@ -147,6 +147,23 @@ int sf_get_s(struct save_stream *restrict stream, char **restrict dest)
 	return len;
 }
 
+int sf_get_s_arr(struct save_stream *restrict stream, char **restrict array,
+	int len)
+{
+	int array_len = 0;
+	for (; array_len < len; ++array_len) {
+		if (sf_get_s(stream, array + array_len) < 0)
+			goto out_fail;
+	}
+
+	return 0;
+
+out_fail:
+	while (array_len--)
+		free(array[array_len]);
+	return -stream->status;
+}
+
 int sf_get_ns(struct save_stream *restrict stream, char *restrict dest,
 	      size_t dest_size)
 {

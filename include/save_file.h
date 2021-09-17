@@ -392,6 +392,20 @@ int sf_put_s(struct save_stream *restrict stream, const char *restrict string);
 int sf_get_s(struct save_stream *restrict stream, char **restrict dest);
 
 /*
+ * Read an array of strings from stream. The caller is
+ * responsible for freeing all len strings mallocated in the array when
+ * no longer needed.
+ *
+ * On memory allocation error, strings that were stored in the array are freed
+ * and stream status is set to S_EMEM.
+ *
+ * On success, return a nonnegative integer. Otherwise,
+ * return the stream status negated.
+ */
+int sf_get_s_arr(struct save_stream *restrict stream, char **restrict array,
+	int len);
+
+/*
  * Read a string, prefixed by its 16-bit length, from stream to dest.
  *
  * If the string cannot fit to dest along with its
