@@ -45,23 +45,29 @@ int get_snapshot_size(const struct snapshot *shot)
 	}
 }
 
-int init_snapshot(struct snapshot *shot, enum pixel_format px_format,
-	int width, int height)
+struct snapshot *create_snapshot(enum pixel_format format, int width, int height)
 {
+	struct snapshot *shot;
 	int shot_sz;
-	shot->pixel_format = px_format;
+	shot = malloc(sizeof(*shot));
+	if (!shot)
+		return NULL;
+	shot->pixel_format = format;
 	shot->width = width;
 	shot->height = height;
 	shot_sz = get_snapshot_size(shot);
 	shot->pixels = malloc(shot_sz);
 	if (!shot->pixels)
-		return -S_EMEM;
+		goto out_fail;
 
-	return shot_sz;
+	return shot;
+out_fail:
+	free(shot);
+	return NULL;
 }
 
 void destroy_snapshot(struct snapshot *shot)
 {
 	free(shot->pixels);
-	shot->pixels = NULL;
+	free(shot);
 }

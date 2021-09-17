@@ -41,11 +41,10 @@ enum pixel_format determine_snapshot_format(int engine_version);
  * Initialize a snapshot. The caller is responsible for destroying it when
  * no longer needed.
  *
- * On success, return the amount of memory allocated for pixel data in bytes.
- * Otherwise, return -S_EMEM.
+ * On memory allocation error, return NULL. Otherwise, return a pointer
+ * to the snapshot.
  */
-int init_snapshot(struct snapshot *shot, enum pixel_format px_format,
-	int width, int height);
+struct snapshot *create_snapshot(enum pixel_format format, int width, int height);
 
 /*
  * Get a pointer to the raw pixel data of the snapshot.
