@@ -3,9 +3,9 @@ CFLAGS = -Iinclude -Wall -Wextra -g
 LIBS = -llz4
 
 OBJS = 	main.o \
-	file_io.o \
 	snapshot.o \
 	save_file.o \
+	game_save.o
 
 TARGET = cegse
 
