@@ -20,11 +20,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include <string.h>
+#include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
 #include <assert.h>
 #include "defines.h"
-#include "save_file.h"
 #include "game_save.h"
 
 struct game {
@@ -49,23 +49,6 @@ static const struct game supported_games[] = {
 };
 
 #undef INIT_GAME
-
-/*
- * Convert a FILETIME to a time_t. Note that FILETIME is more accurate
- * than time_t.
- */
-static inline time_t filetime_to_time(FILETIME filetime)
-{
-	return (time_t)(filetime / 10000000) - 11644473600;
-}
-
-/*
- * Convert a time_t to a FILETIME.
- */
-static inline FILETIME time_to_filetime(time_t t)
-{
-	return (FILETIME)(t + 11644473600) * 10000000;
-}
 
 /*
  * Attempts to identify the game of a game save file by reading magic bytes.
@@ -101,21 +84,6 @@ struct game_save* create_game_save(enum game_title game_title,
 	save->game_title = game_title;
 	save->engine_version = engine_version;
 	return save;
-}
-
-/*
- * Builds a serializable file header of a game save.
- */
-static void compose_file_header(struct file_header *restrict header,
-				const struct game_save *restrict save)
-{
-	memset(header, 0, sizeof(*header));
-	header->engine_version = save->engine_version;
-	header->save_num = save->save_num;
-	/* TODO: Copy player info here */
-	header->filetime = time_to_filetime(save->time_saved);
-	header->snapshot_width = save->snapshot->width;
-	header->snapshot_height = save->snapshot->height;
 }
 
 

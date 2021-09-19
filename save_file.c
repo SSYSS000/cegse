@@ -26,6 +26,23 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "save_file.h"
 #include "snapshot.h"
 
+/*
+ * Convert a FILETIME to a time_t. Note that FILETIME is more accurate
+ * than time_t.
+ */
+static inline time_t filetime_to_time(FILETIME filetime)
+{
+	return (time_t)(filetime / 10000000) - 11644473600;
+}
+
+/*
+ * Convert a time_t to a FILETIME.
+ */
+static inline FILETIME time_to_filetime(time_t t)
+{
+	return (FILETIME)(t + 11644473600) * 10000000;
+}
+
 int file_compare(FILE *restrict stream, const void *restrict data, int num)
 {
 	int c;
@@ -182,6 +199,21 @@ int sf_get_ns(struct save_stream *restrict stream, char *restrict dest,
 
 	dest[len] = '\0';
 	return len;
+}
+
+/*
+ * Builds a serializable file header of a game save.
+ */
+static void compose_file_header(struct file_header *restrict header,
+				const struct game_save *restrict save)
+{
+	memset(header, 0, sizeof(*header));
+	header->engine_version = save->engine_version;
+	header->save_num = save->save_num;
+	/* TODO: Copy player info here */
+	header->filetime = time_to_filetime(save->time_saved);
+	header->snapshot_width = save->snapshot->width;
+	header->snapshot_height = save->snapshot->height;
 }
 
 int serialize_file_header(struct transfer_context *restrict ctx)

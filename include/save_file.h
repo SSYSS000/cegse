@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdio.h>
 #include "types.h"
 #include "snapshot.h"
+#include "game_save.h"
 
 struct save_stream {
 	FILE		*stream;
@@ -61,8 +62,6 @@ struct file_location_table {
 	u32 global_data_table_3_count;
 	u32 change_form_count;
 };
-
-struct game_save;
 
 struct transfer_context {
 	struct save_stream stream;
