@@ -216,6 +216,12 @@ static void compose_file_header(struct file_header *restrict header,
 	header->snapshot_height = save->snapshot->height;
 }
 
+/*
+ * deserialize_* functions do NOT free allocated resources on failure.
+ * The state of game_save shall be left in such a valid state that
+ * destroy_game_save() can be called on it.
+ */
+
 int serialize_file_header(struct transfer_context *restrict ctx)
 {
 	sf_put_u32(&ctx->stream, ctx->header.engine_version);
@@ -296,6 +302,79 @@ int deserialize_file_location_table(struct transfer_context *restrict ctx)
 	sf_get_u32(&ctx->stream, &ctx->locations.change_form_count);
 	/* Skip unused. */
 	fseek(ctx->stream.stream, sizeof(u32[15]), SEEK_CUR);
+
+	return -ctx->stream.status;
+}
+
+int serialize_plugins(struct transfer_context *restrict ctx)
+{
+	u32 plugins_size;
+	long start_pos;
+	long end_pos;
+	u8 i;
+
+	start_pos = ftell(ctx->stream.stream);
+	sf_put_u32(&ctx->stream, 0u);
+	sf_put_u8(&ctx->stream, ctx->save->num_plugins);
+	for (i = 0u; i < ctx->save->num_plugins; ++i)
+		sf_put_s(&ctx->stream, ctx->save->plugins[i]);
+
+	end_pos = ftell(ctx->stream.stream);
+	plugins_size = end_pos - start_pos - sizeof(plugins_size);
+
+	fseek(ctx->stream.stream, start_pos, SEEK_SET);
+	sf_put_u32(&ctx->stream, plugins_size);
+	fseek(ctx->stream.stream, end_pos, SEEK_SET);
+	return -ctx->stream.status;
+}
+
+int deserialize_plugins(struct transfer_context *restrict ctx)
+{
+	u32 plugins_size;
+
+	sf_get_u32(&ctx->stream, &plugins_size);
+	if (sf_get_u8(&ctx->stream, &ctx->save->num_plugins) < 0)
+		return -ctx->stream.status;
+
+	ctx->save->plugins = malloc(ctx->save->num_plugins * sizeof(char*));
+	if (!ctx->save->plugins) {
+		ctx->stream.status = S_EMEM;
+		return -ctx->stream.status;
+	}
+
+	sf_get_s_arr(&ctx->stream, ctx->save->plugins, ctx->save->num_plugins);
+	if (ctx->stream.status != S_OK)
+		ctx->save->num_plugins = 0;
+
+	return -ctx->stream.status;
+}
+
+int serialize_light_plugins(struct transfer_context *restrict ctx)
+{
+	u8 i;
+
+	sf_put_u16(&ctx->stream, ctx->save->num_light_plugins);
+	for (i = 0u; i < ctx->save->num_light_plugins; ++i)
+		sf_put_s(&ctx->stream, ctx->save->light_plugins[i]);
+
+	return -ctx->stream.status;
+}
+
+int deserialize_light_plugins(struct transfer_context *restrict ctx)
+{
+	if (sf_get_u16(&ctx->stream, &ctx->save->num_light_plugins) < 0)
+		return -ctx->stream.status;
+
+	ctx->save->light_plugins = malloc(
+		ctx->save->num_light_plugins * sizeof(char*));
+	if (!ctx->save->plugins) {
+		ctx->stream.status = S_EMEM;
+		return -ctx->stream.status;
+	}
+
+	sf_get_s_arr(&ctx->stream, ctx->save->plugins, ctx->save->num_plugins);
+	if (ctx->stream.status != S_OK)
+		ctx->save->num_light_plugins = 0;
 
 	return -ctx->stream.status;
 }
