@@ -66,6 +66,7 @@ struct save_load {
 	struct game_save   	*save;
 	jmp_buf			jmpbuf;
 	u8		   	format;
+	FILE 			*compress; /* tmpfile for compression/decompression */
 };
 
 /*

@@ -352,7 +352,6 @@ out_cleanup:
 
 static void deserialize_save_data(struct save_load *restrict ctx)
 {
-	unsigned i;
 	sf_get_u8(&ctx->stream, &ctx->format);
 	ctx->save->file_format = ctx->format;
 
@@ -373,8 +372,6 @@ static void deserialize_save_data(struct save_load *restrict ctx)
 
 static void deserialize_file_body(struct save_load *restrict ctx)
 {
-	FILE *original_stream = ctx->stream.stream;
-	FILE *decompressed_stream = NULL;
 	u32 decompressed_size;
 	u32 compressed_size;
 	int rc;
@@ -384,27 +381,21 @@ static void deserialize_file_body(struct save_load *restrict ctx)
 	if (ctx->header.engine_version >= 12u) {
 		sf_get_u32(&ctx->stream, &decompressed_size);
 		sf_get_u32(&ctx->stream, &compressed_size);
-
 		save_load_check_stream(ctx);
 
-		decompressed_stream = tmpfile();
-		if (!decompressed_stream) {
+		ctx->compress = tmpfile();
+		if (!ctx->compress) {
+			perror("tmpfile");
 			save_load_fail(ctx, S_EFILE);
 		}
-		rc = decompress_lz4(ctx->stream.stream, decompressed_stream,
+		rc = decompress_lz4(ctx->stream.stream, ctx->compress,
 			compressed_size, decompressed_size);
-		if (rc < 0) {
-			goto out_fail;
-		}
-		ctx->stream.stream = decompressed_stream;
+		if (rc < 0)
+			save_load_fail(ctx, -rc);
+		ctx->stream.stream = ctx->compress;
 	}
 
 	deserialize_save_data(ctx);
-
-out_cleanup:
-	ctx->stream.stream = original_stream;
-	if (decompressed_stream)
-		fclose(decompressed_stream);
 }
 
 static void deserialize_file(struct save_load *restrict ctx)
@@ -430,6 +421,9 @@ int load_game_save(struct game_save *restrict save, FILE *restrict stream)
 	ret = setjmp(sl.jmpbuf);
 	if (ret == 0)
 		deserialize_file(&sl);
+
+	if (sl.compress)
+		fclose(sl.compress);
 
 	return -ret;
 }
