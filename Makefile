@@ -5,7 +5,8 @@ LIBS = -llz4
 OBJS = 	main.o \
 	snapshot.o \
 	save_file.o \
-	game_save.o
+	game_save.o \
+	save_stream.o \
 
 TARGET = cegse
 
