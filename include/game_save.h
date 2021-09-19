@@ -31,6 +31,12 @@ enum game_title {
 	FALLOUT4
 };
 
+struct game {
+	enum game_title title;
+	const unsigned char *magic_bytes;
+	int magic_size;
+};
+
 struct game_save {
 	enum game_title game_title;
 	int engine_version;
@@ -54,6 +60,16 @@ struct game_save {
 	u16 num_light_plugins;
 	char **light_plugins;
 };
+
+/*
+ * Attempts to identify the game of a game save file by reading magic bytes.
+ *
+ * Note that on success, the file position indicator is at the end
+ * of the magic bytes.
+ * If the game cannot be identified or a file error occurred, return NULL.
+ * Otherwise, return a pointer to the game.
+ */
+const struct game *identify_game_save_game(FILE *stream);
 
 /*
  * Create a game save.

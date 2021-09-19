@@ -27,12 +27,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "defines.h"
 #include "game_save.h"
 
-struct game {
-	enum game_title title;
-	const unsigned char *magic_bytes;
-	int magic_size;
-};
-
 static const unsigned char tesv_magic[] = {
 	'T','E','S','V','_','S','A','V','E','G','A','M','E'};
 
@@ -50,15 +44,7 @@ static const struct game supported_games[] = {
 
 #undef INIT_GAME
 
-/*
- * Attempts to identify the game of a game save file by reading magic bytes.
- *
- * Note that on success, the file position indicator is at the end
- * of the magic bytes.
- * If the game cannot be identified or a file error occurred, return NULL.
- * Otherwise, return a pointer to the game.
- */
-static const struct game *identify_game_save_game(FILE *stream)
+const struct game *identify_game_save_game(FILE *stream)
 {
 	int rc;
 	const struct game *i;
