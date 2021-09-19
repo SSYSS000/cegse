@@ -392,6 +392,7 @@ static void deserialize_file_body(struct save_load *restrict ctx)
 			compressed_size, decompressed_size);
 		if (rc < 0)
 			save_load_fail(ctx, -rc);
+		rewind(ctx->compress);
 		ctx->stream.stream = ctx->compress;
 	}
 
