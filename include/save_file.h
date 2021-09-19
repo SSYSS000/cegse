@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <endian.h>
 #include <stdio.h>
+#include <setjmp.h>
 #include "types.h"
 #include "snapshot.h"
 #include "game_save.h"
@@ -63,12 +64,13 @@ struct file_location_table {
 	u32 change_form_count;
 };
 
-struct transfer_context {
-	struct save_stream stream;
-	struct file_header header;
+struct save_load {
+	struct save_stream 	stream;
+	struct file_header 	header;
 	struct file_location_table locations;
-	u8		   format;
-	struct game_save   *save;
+	struct game_save   	*save;
+	jmp_buf			jmpbuf;
+	u8		   	format;
 };
 
 /*
@@ -417,37 +419,6 @@ int sf_get_s_arr(struct save_stream *restrict stream, char **restrict array,
 int sf_get_ns(struct save_stream *restrict stream, char *restrict dest,
 	      size_t dest_size);
 
-/*
- * Serialize a file header to stream. Set stream status on error.
- *
- * On success, return nonnegative integer.
- */
-int serialize_file_header(struct transfer_context *restrict ctx);
-
-/*
- * Deserialize a file header from stream. Set stream status on error.
- *
- * On success, return nonnegative integer.
- */
-int deserialize_file_header(struct transfer_context *restrict ctx);
-
-/*
- * Serialize a file location table to stream. Set stream status on error.
- *
- * On success, return nonnegative integer.
- */
-int serialize_file_location_table(struct transfer_context *restrict ctx);
-
-/*
- * Deserialize a file location table from stream. Set stream status on error.
- *
- * On success, return nonnegative integer.
- */
-int deserialize_file_location_table(struct transfer_context *restrict ctx);
-
-/*
- *
- */
-int snapshot_from_stream(struct transfer_context *restrict ctx);
+int load_game_save(struct game_save *restrict save, FILE *restrict stream);
 
 #endif /* CEGSE_SAVE_FILE_H */

@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <string.h>
 #include <assert.h>
 #include <lz4.h>
+#include <stdnoreturn.h>
 #include "save_file.h"
 #include "snapshot.h"
 
@@ -202,6 +203,24 @@ int sf_get_ns(struct save_stream *restrict stream, char *restrict dest,
 }
 
 /*
+ * Fail save load, returning to whomever owns it.
+ */
+noreturn static inline
+void save_load_fail(struct save_load *ctx, enum status_code error)
+{
+	longjmp(ctx->jmpbuf, error);
+}
+
+/*
+ * Check the stream, failing save load if the stream had failed.
+ */
+static inline void save_load_check_stream(struct save_load *ctx)
+{
+	if (ctx->stream.status != S_OK)
+		save_load_fail(ctx, ctx->stream.status);
+}
+
+/*
  * Builds a serializable file header of a game save.
  */
 static void compose_file_header(struct file_header *restrict header,
@@ -222,7 +241,12 @@ static void compose_file_header(struct file_header *restrict header,
  * destroy_game_save() can be called on it.
  */
 
-int serialize_file_header(struct transfer_context *restrict ctx)
+/*
+ * Serialize a file header to stream. Set stream status on error.
+ *
+ * On success, return nonnegative integer.
+ */
+static void serialize_file_header(struct save_load *restrict ctx)
 {
 	sf_put_u32(&ctx->stream, ctx->header.engine_version);
 	sf_put_u32(&ctx->stream, ctx->header.save_num);
@@ -240,11 +264,14 @@ int serialize_file_header(struct transfer_context *restrict ctx)
 
 	if (ctx->header.engine_version >= 12u)
 		sf_put_u16(&ctx->stream, ctx->header.compression_type);
-
-	return -ctx->stream.status;
 }
 
-int deserialize_file_header(struct transfer_context *restrict ctx)
+/*
+ * Deserialize a file header from stream. Set stream status on error.
+ *
+ * On success, return nonnegative integer.
+ */
+static void deserialize_file_header(struct save_load *restrict ctx)
 {
 	struct save_stream *restrict stream = &ctx->stream;
 	struct file_header *restrict header = &ctx->header;
@@ -265,30 +292,14 @@ int deserialize_file_header(struct transfer_context *restrict ctx)
 	if (stream->status == S_OK && header->engine_version >= 12u)
 		sf_get_u16(stream, &header->compression_type);
 
-	return -stream->status;
+	save_load_check_stream(ctx);
 }
 
-int serialize_file_location_table(struct transfer_context *restrict ctx)
-{
-	sf_put_u32(&ctx->stream, ctx->locations.form_id_array_count_offset);
-	sf_put_u32(&ctx->stream, ctx->locations.unknown_table_3_offset);
-	sf_put_u32(&ctx->stream, ctx->locations.global_data_table_1_offset);
-	sf_put_u32(&ctx->stream, ctx->locations.global_data_table_2_offset);
-	sf_put_u32(&ctx->stream, ctx->locations.change_forms_offset);
-	sf_put_u32(&ctx->stream, ctx->locations.global_data_table_3_offset);
-	sf_put_u32(&ctx->stream, ctx->locations.global_data_table_1_count);
-	sf_put_u32(&ctx->stream, ctx->locations.global_data_table_2_count);
-	sf_put_u32(&ctx->stream, ctx->locations.global_data_table_3_count);
-	sf_put_u32(&ctx->stream, ctx->locations.change_form_count);
-
-	/* Write unused bytes. */
-	for (int i = 0; i < 15; ++i)
-		sf_put_u32(&ctx->stream, 0u);
-
-	return -ctx->stream.status;
-}
-
-int deserialize_file_location_table(struct transfer_context *restrict ctx)
+/*
+ * Deserialize a file location table from stream. Set stream status on error.
+ */
+static void deserialize_file_location_table(
+	struct save_load *restrict ctx)
 {
 	sf_get_u32(&ctx->stream, &ctx->locations.form_id_array_count_offset);
 	sf_get_u32(&ctx->stream, &ctx->locations.unknown_table_3_offset);
@@ -303,10 +314,10 @@ int deserialize_file_location_table(struct transfer_context *restrict ctx)
 	/* Skip unused. */
 	fseek(ctx->stream.stream, sizeof(u32[15]), SEEK_CUR);
 
-	return -ctx->stream.status;
+	save_load_check_stream(ctx);
 }
 
-int serialize_plugins(struct transfer_context *restrict ctx)
+static void serialize_plugins(struct save_load *restrict ctx)
 {
 	u32 plugins_size;
 	long start_pos;
@@ -325,61 +336,57 @@ int serialize_plugins(struct transfer_context *restrict ctx)
 	fseek(ctx->stream.stream, start_pos, SEEK_SET);
 	sf_put_u32(&ctx->stream, plugins_size);
 	fseek(ctx->stream.stream, end_pos, SEEK_SET);
-	return -ctx->stream.status;
 }
 
-int deserialize_plugins(struct transfer_context *restrict ctx)
+static void deserialize_plugins(struct save_load *restrict ctx)
 {
 	u32 plugins_size;
+	u8 num_plugins;
 
 	sf_get_u32(&ctx->stream, &plugins_size);
-	if (sf_get_u8(&ctx->stream, &ctx->save->num_plugins) < 0)
-		return -ctx->stream.status;
+	sf_get_u8(&ctx->stream, &num_plugins);
 
-	ctx->save->plugins = malloc(ctx->save->num_plugins * sizeof(char*));
-	if (!ctx->save->plugins) {
-		ctx->stream.status = S_EMEM;
-		return -ctx->stream.status;
-	}
+	save_load_check_stream(ctx);
 
-	sf_get_s_arr(&ctx->stream, ctx->save->plugins, ctx->save->num_plugins);
-	if (ctx->stream.status != S_OK)
-		ctx->save->num_plugins = 0;
+	ctx->save->plugins = malloc(num_plugins * sizeof(char*));
+	if (!ctx->save->plugins)
+		save_load_fail(ctx, S_EMEM);
 
-	return -ctx->stream.status;
+	sf_get_s_arr(&ctx->stream, ctx->save->plugins, num_plugins);
+
+	save_load_check_stream(ctx);
+
+	ctx->save->num_plugins = num_plugins;
 }
 
-int serialize_light_plugins(struct transfer_context *restrict ctx)
+static void serialize_light_plugins(struct save_load *restrict ctx)
 {
 	u8 i;
 
 	sf_put_u16(&ctx->stream, ctx->save->num_light_plugins);
 	for (i = 0u; i < ctx->save->num_light_plugins; ++i)
 		sf_put_s(&ctx->stream, ctx->save->light_plugins[i]);
-
-	return -ctx->stream.status;
 }
 
-int deserialize_light_plugins(struct transfer_context *restrict ctx)
+static void deserialize_light_plugins(struct save_load *restrict ctx)
 {
-	if (sf_get_u16(&ctx->stream, &ctx->save->num_light_plugins) < 0)
-		return -ctx->stream.status;
+	u16 num_plugins;
 
-	ctx->save->light_plugins = malloc(
-		ctx->save->num_light_plugins * sizeof(char*));
-	if (!ctx->save->plugins) {
-		ctx->stream.status = S_EMEM;
-		return -ctx->stream.status;
-	}
+	sf_get_u16(&ctx->stream, &num_plugins);
+	save_load_check_stream(ctx);
 
-	sf_get_s_arr(&ctx->stream, ctx->save->plugins, ctx->save->num_plugins);
-	if (ctx->stream.status != S_OK)
-		ctx->save->num_light_plugins = 0;
+	ctx->save->light_plugins = malloc(num_plugins * sizeof(char*));
+	if (!ctx->save->plugins)
+		save_load_fail(ctx, S_EMEM);
 
-	return -ctx->stream.status;
+	sf_get_s_arr(&ctx->stream, ctx->save->light_plugins, num_plugins);
+
+	save_load_check_stream(ctx);
+
+	ctx->save->num_light_plugins = num_plugins;
 }
 
-int snapshot_from_stream(struct transfer_context *restrict ctx)
+static void deserialize_snapshot(struct save_load *restrict ctx)
 {
 	enum pixel_format px_format;
 	struct snapshot *shot;
@@ -388,20 +395,13 @@ int snapshot_from_stream(struct transfer_context *restrict ctx)
 	px_format = determine_snapshot_format(ctx->header.engine_version);
 	shot = create_snapshot(px_format, ctx->header.snapshot_width,
 		ctx->header.snapshot_height);
-	if (!shot) {
-		ctx->stream.status = S_EMEM;
-		return -ctx->stream.status;
-	}
-	shot_sz = get_snapshot_size(shot);
-	if (sf_read(&ctx->stream, get_snapshot_data(shot), shot_sz) < 0)
-		goto out_stream_error;
-
+	if (!shot)
+		save_load_fail(ctx, S_EMEM);
 	ctx->save->snapshot = shot;
-	return S_OK;
 
-out_stream_error:
-	destroy_snapshot(shot);
-	return -ctx->stream.status;
+	shot_sz = get_snapshot_size(shot);
+	sf_read(&ctx->stream, get_snapshot_data(shot), shot_sz);
+	save_load_check_stream(ctx);
 }
 
 /*
@@ -488,7 +488,7 @@ out_cleanup:
 	return ret;
 }
 
-int deserialize_save_data(struct transfer_context *restrict ctx)
+static void deserialize_save_data(struct save_load *restrict ctx)
 {
 	unsigned i;
 	sf_get_u8(&ctx->stream, &ctx->format);
@@ -507,10 +507,9 @@ int deserialize_save_data(struct transfer_context *restrict ctx)
 
 	/* TODO: Read the rest. */
 
-	return -ctx->stream.status;
 }
 
-int deserialize_file_body(struct transfer_context *restrict ctx)
+static void deserialize_file_body(struct save_load *restrict ctx)
 {
 	FILE *original_stream = ctx->stream.stream;
 	FILE *decompressed_stream = NULL;
@@ -518,23 +517,22 @@ int deserialize_file_body(struct transfer_context *restrict ctx)
 	u32 compressed_size;
 	int rc;
 
-	snapshot_from_stream(ctx);
+	deserialize_snapshot(ctx);
 
 	if (ctx->header.engine_version >= 12u) {
 		sf_get_u32(&ctx->stream, &decompressed_size);
 		sf_get_u32(&ctx->stream, &compressed_size);
-		if (ctx->stream.status != S_OK)
-			goto out_cleanup;
+
+		save_load_check_stream(ctx);
+
 		decompressed_stream = tmpfile();
 		if (!decompressed_stream) {
-			ctx->stream.status = S_EFILE;
-			goto out_cleanup;
+			save_load_fail(ctx, S_EFILE);
 		}
 		rc = decompress_lz4(ctx->stream.stream, decompressed_stream,
 			compressed_size, decompressed_size);
 		if (rc < 0) {
-			ctx->stream.status = -rc;
-			goto out_cleanup;
+			goto out_fail;
 		}
 		ctx->stream.stream = decompressed_stream;
 	}
@@ -545,19 +543,31 @@ out_cleanup:
 	ctx->stream.stream = original_stream;
 	if (decompressed_stream)
 		fclose(decompressed_stream);
-	return -ctx->stream.status;
 }
 
-int deserialize_file(struct transfer_context *restrict ctx)
+static void deserialize_file(struct save_load *restrict ctx)
 {
 	u32 header_sz;
 
 	sf_get_u32(&ctx->stream, &header_sz);
-	if (deserialize_file_header(ctx) < 0)
-		return -ctx->stream.status;
+	deserialize_file_header(ctx);
 
 	ctx->save->engine_version = ctx->header.engine_version;
 	ctx->save->time_saved = filetime_to_time(ctx->header.filetime);
 
-	return deserialize_file_body(ctx);
+	deserialize_file_body(ctx);
+}
+
+int load_game_save(struct game_save *restrict save, FILE *restrict stream)
+{
+	struct save_load sl = {};
+	int ret;
+
+	sl.stream.stream = stream;
+	sl.save = save;
+	ret = setjmp(sl.jmpbuf);
+	if (ret == 0)
+		deserialize_file(&sl);
+
+	return -ret;
 }
