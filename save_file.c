@@ -487,3 +487,77 @@ out_cleanup:
 	free(decomp_buf);
 	return ret;
 }
+
+int deserialize_save_data(struct transfer_context *restrict ctx)
+{
+	unsigned i;
+	sf_get_u8(&ctx->stream, &ctx->format);
+	ctx->save->file_format = ctx->format;
+
+	if (ctx->header.engine_version == 11u)
+		sf_get_ns(&ctx->stream, ctx->save->game_version,
+			sizeof(ctx->save->game_version));
+
+	deserialize_plugins(ctx);
+
+	if (ctx->header.engine_version == 12u && ctx->format >= 78)
+		deserialize_light_plugins(ctx);
+
+	deserialize_file_location_table(ctx);
+
+	/* TODO: Read the rest. */
+
+	return -ctx->stream.status;
+}
+
+int deserialize_file_body(struct transfer_context *restrict ctx)
+{
+	FILE *original_stream = ctx->stream.stream;
+	FILE *decompressed_stream = NULL;
+	u32 decompressed_size;
+	u32 compressed_size;
+	int rc;
+
+	snapshot_from_stream(ctx);
+
+	if (ctx->header.engine_version >= 12u) {
+		sf_get_u32(&ctx->stream, &decompressed_size);
+		sf_get_u32(&ctx->stream, &compressed_size);
+		if (ctx->stream.status != S_OK)
+			goto out_cleanup;
+		decompressed_stream = tmpfile();
+		if (!decompressed_stream) {
+			ctx->stream.status = S_EFILE;
+			goto out_cleanup;
+		}
+		rc = decompress_lz4(ctx->stream.stream, decompressed_stream,
+			compressed_size, decompressed_size);
+		if (rc < 0) {
+			ctx->stream.status = -rc;
+			goto out_cleanup;
+		}
+		ctx->stream.stream = decompressed_stream;
+	}
+
+	deserialize_save_data(ctx);
+
+out_cleanup:
+	ctx->stream.stream = original_stream;
+	if (decompressed_stream)
+		fclose(decompressed_stream);
+	return -ctx->stream.status;
+}
+
+int deserialize_file(struct transfer_context *restrict ctx)
+{
+	u32 header_sz;
+
+	sf_get_u32(&ctx->stream, &header_sz);
+	if (deserialize_file_header(ctx) < 0)
+		return -ctx->stream.status;
+
+	ctx->save->engine_version = ctx->header.engine_version;
+	ctx->save->time_saved = filetime_to_time(ctx->header.filetime);
+
+	return deserialize_file_body(ctx);
+}
