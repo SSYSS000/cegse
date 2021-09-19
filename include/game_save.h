@@ -35,6 +35,7 @@ struct game_save {
 	enum game_title game_title;
 	int engine_version;
 	int save_num;
+	u8 file_format;
 
 	time_t time_saved;
 
@@ -47,10 +48,10 @@ struct game_save {
 	*/
 	char game_version[24];
 
-	int num_plugins;
+	u8 num_plugins;
 	char **plugins;
 
-	int num_light_plugins;
+	u16 num_light_plugins;
 	char **light_plugins;
 };
 
