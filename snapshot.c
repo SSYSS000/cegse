@@ -57,13 +57,12 @@ struct snapshot *create_snapshot(enum pixel_format format, int width, int height
 	shot->height = height;
 	shot_sz = get_snapshot_size(shot);
 	shot->pixels = malloc(shot_sz);
-	if (!shot->pixels)
-		goto out_fail;
+	if (!shot->pixels) {
+		free(shot);
+		return NULL;
+	}
 
 	return shot;
-out_fail:
-	free(shot);
-	return NULL;
 }
 
 void destroy_snapshot(struct snapshot *shot)
