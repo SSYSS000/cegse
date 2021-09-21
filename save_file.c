@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <assert.h>
 #include <lz4.h>
 #include <stdnoreturn.h>
+#include <stdbool.h>
 #include "save_file.h"
 #include "snapshot.h"
 
@@ -42,6 +43,30 @@ static inline time_t filetime_to_time(FILETIME filetime)
 static inline FILETIME time_to_filetime(time_t t)
 {
 	return (FILETIME)(t + 11644473600) * 10000000;
+}
+
+/*
+ * Check if Skyrim Special Edition uses _engine_ version.
+ */
+static inline bool is_skse(unsigned engine)
+{
+	return engine == 12u;
+}
+
+/*
+ * Check if Skyrim Legendary Edition uses _engine_ version.
+ */
+static inline bool is_skle(unsigned engine)
+{
+	return 7u <= engine && engine <= 9u;
+}
+
+/*
+ * Check if a save file is expected to be compressed.
+ */
+static inline bool uses_compression(enum game_title title, unsigned engine)
+{
+	return title == SKYRIM && is_skse(engine);
 }
 
 int file_compare(FILE *restrict stream, const void *restrict data, int num)
@@ -124,7 +149,7 @@ static void serialize_file_header(struct save_load *restrict ctx)
 	sf_put_u32(&ctx->stream, ctx->header.snapshot_width);
 	sf_put_u32(&ctx->stream, ctx->header.snapshot_height);
 
-	if (ctx->header.engine_version >= 12u)
+	if (uses_compression(ctx->save->game_title, ctx->header.engine_version))
 		sf_put_u16(&ctx->stream, ctx->header.compression_type);
 }
 
@@ -151,7 +176,9 @@ static void deserialize_file_header(struct save_load *restrict ctx)
 	sf_get_u32(stream, &header->snapshot_width);
 	sf_get_u32(stream, &header->snapshot_height);
 
-	if (stream->status == S_OK && header->engine_version >= 12u)
+	save_load_check_stream(ctx);
+
+	if (uses_compression(ctx->save->game_title, header->engine_version))
 		sf_get_u16(stream, &header->compression_type);
 
 	save_load_check_stream(ctx);
@@ -377,7 +404,7 @@ static void deserialize_file_body(struct save_load *restrict ctx)
 
 	deserialize_snapshot(ctx);
 
-	if (ctx->header.engine_version >= 12u) {
+	if (ctx->header.compression_type) {
 		sf_get_u32(&ctx->stream, &decompressed_size);
 		sf_get_u32(&ctx->stream, &compressed_size);
 		save_load_check_stream(ctx);
