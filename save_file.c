@@ -160,8 +160,7 @@ static void deserialize_file_header(struct save_load *restrict ctx)
 /*
  * Deserialize a file location table from stream. Set stream status on error.
  */
-static void deserialize_file_location_table(
-	struct save_load *restrict ctx)
+static void deserialize_file_location_table(struct save_load *restrict ctx)
 {
 	sf_get_u32(&ctx->stream, &ctx->locations.form_id_array_count_offset);
 	sf_get_u32(&ctx->stream, &ctx->locations.unknown_table_3_offset);
@@ -414,7 +413,7 @@ static void deserialize_file(struct save_load *restrict ctx)
 
 int load_game_save(struct game_save *restrict save, FILE *restrict stream)
 {
-	struct save_load sl = {};
+	struct save_load sl = {0};
 	int ret;
 
 	sl.stream.stream = stream;
