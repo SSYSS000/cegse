@@ -55,4 +55,14 @@ enum global_data_type {
 	GLOBAL_MAIN			= 1005
 };
 
+enum misc_stat_type {
+	MS_GENERAL	= 0,
+	MS_QUEST	= 1,
+	MS_COMBAT	= 2,
+	MS_MAGIC	= 3,
+	MS_CRAFTING	= 4,
+	MS_CRIME	= 5,
+	MS_DLC		= 6
+};
+
 #endif /* CEGSE_GLOBAL_DATA_H */
