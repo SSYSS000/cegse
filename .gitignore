@@ -3,6 +3,7 @@ samples
 
 # Build files
 cegse
+test
 *.o
 
 # IDE project files
