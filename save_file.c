@@ -124,7 +124,7 @@ static void compose_file_header(struct file_header *restrict header,
 }
 
 /*
- * deserialize_* functions do NOT free allocated resources on failure.
+ * read_* functions do NOT free allocated resources on failure.
  * The state of game_save shall be left in such a valid state that
  * destroy_game_save() can be called on it.
  */
@@ -192,7 +192,7 @@ static int read_file_header(struct save_stream *restrict stream,
 /*
  * Deserialize a file location table from stream. Set stream status on error.
  */
-static void deserialize_file_location_table(struct save_load *restrict ctx)
+static void read_file_location_table(struct save_load *restrict ctx)
 {
 	DPRINT("reading file location table at 0x%lx\n",
 	       ftell(ctx->stream.stream));
@@ -212,7 +212,7 @@ static void deserialize_file_location_table(struct save_load *restrict ctx)
 	save_load_check_stream(ctx);
 }
 
-static void serialize_plugins(struct save_load *restrict ctx)
+static void write_plugins(struct save_load *restrict ctx)
 {
 	u32 plugins_size;
 	long start_pos;
@@ -233,7 +233,7 @@ static void serialize_plugins(struct save_load *restrict ctx)
 	fseek(ctx->stream.stream, end_pos, SEEK_SET);
 }
 
-static void deserialize_plugins(struct save_load *restrict ctx)
+static void read_plugins(struct save_load *restrict ctx)
 {
 	u32 plugins_size;
 	u8 num_plugins;
@@ -255,7 +255,7 @@ static void deserialize_plugins(struct save_load *restrict ctx)
 	ctx->save->num_plugins = num_plugins;
 }
 
-static void serialize_light_plugins(struct save_load *restrict ctx)
+static void write_light_plugins(struct save_load *restrict ctx)
 {
 	unsigned i;
 
@@ -264,7 +264,7 @@ static void serialize_light_plugins(struct save_load *restrict ctx)
 		sf_put_s(&ctx->stream, ctx->save->light_plugins[i]);
 }
 
-static void deserialize_light_plugins(struct save_load *restrict ctx)
+static void read_light_plugins(struct save_load *restrict ctx)
 {
 	u16 num_plugins;
 
@@ -282,7 +282,7 @@ static void deserialize_light_plugins(struct save_load *restrict ctx)
 	ctx->save->num_light_plugins = num_plugins;
 }
 
-static void deserialize_snapshot(struct save_load *restrict ctx)
+static void read_snapshot(struct save_load *restrict ctx)
 {
 	enum pixel_format px_format;
 	struct snapshot *shot;
@@ -385,7 +385,7 @@ out_cleanup:
 	return ret;
 }
 
-static void deserialize_save_data(struct save_load *restrict ctx)
+static void read_save_data(struct save_load *restrict ctx)
 {
 	sf_get_u8(&ctx->stream, &ctx->format);
 	ctx->save->file_format = ctx->format;
@@ -394,24 +394,24 @@ static void deserialize_save_data(struct save_load *restrict ctx)
 		sf_get_ns(&ctx->stream, ctx->save->game_version,
 			sizeof(ctx->save->game_version));
 
-	deserialize_plugins(ctx);
+	read_plugins(ctx);
 
 	if (ctx->header.engine_version == 12u && ctx->format >= 78)
-		deserialize_light_plugins(ctx);
+		read_light_plugins(ctx);
 
-	deserialize_file_location_table(ctx);
+	read_file_location_table(ctx);
 
 	/* TODO: Read the rest. */
 
 }
 
-static void deserialize_file_body(struct save_load *restrict ctx)
+static void read_file_body(struct save_load *restrict ctx)
 {
 	u32 decompressed_size;
 	u32 compressed_size;
 	int rc;
 
-	deserialize_snapshot(ctx);
+	read_snapshot(ctx);
 
 	if (ctx->header.compression_type) {
 		sf_get_u32(&ctx->stream, &decompressed_size);
@@ -431,20 +431,20 @@ static void deserialize_file_body(struct save_load *restrict ctx)
 		ctx->stream.stream = ctx->compress;
 	}
 
-	deserialize_save_data(ctx);
+	read_save_data(ctx);
 }
 
-static void deserialize_file(struct save_load *restrict ctx)
+static void read_file(struct save_load *restrict ctx)
 {
 	u32 header_sz;
 
 	sf_get_u32(&ctx->stream, &header_sz);
-	deserialize_file_header(ctx);
+	read_file_header(ctx);
 
 	ctx->save->engine_version = ctx->header.engine_version;
 	ctx->save->time_saved = filetime_to_time(ctx->header.filetime);
 
-	deserialize_file_body(ctx);
+	read_file_body(ctx);
 }
 
 int load_game_save(struct game_save *restrict save, FILE *restrict stream)
@@ -456,7 +456,7 @@ int load_game_save(struct game_save *restrict save, FILE *restrict stream)
 	sl.save = save;
 	ret = setjmp(sl.jmpbuf);
 	if (ret == 0)
-		deserialize_file(&sl);
+		read_file(&sl);
 
 	if (sl.compress)
 		fclose(sl.compress);
