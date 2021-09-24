@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <lz4.h>
 #include <stdnoreturn.h>
 #include <stdbool.h>
+#include "defines.h"
 #include "save_file.h"
 #include "snapshot.h"
 
@@ -162,6 +163,8 @@ static void deserialize_file_header(struct save_load *restrict ctx)
 {
 	struct save_stream *restrict stream = &ctx->stream;
 	struct file_header *restrict header = &ctx->header;
+
+	DPRINT("reading file header at 0x%lx\n", ftell(ctx->stream.stream));
 	sf_get_u32(stream, &header->engine_version);
 	sf_get_u32(stream, &header->save_num);
 	sf_get_ns (stream, header->ply_name, sizeof(header->ply_name));
@@ -189,6 +192,8 @@ static void deserialize_file_header(struct save_load *restrict ctx)
  */
 static void deserialize_file_location_table(struct save_load *restrict ctx)
 {
+	DPRINT("reading file location table at 0x%lx\n",
+	       ftell(ctx->stream.stream));
 	sf_get_u32(&ctx->stream, &ctx->locations.form_id_array_count_offset);
 	sf_get_u32(&ctx->stream, &ctx->locations.unknown_table_3_offset);
 	sf_get_u32(&ctx->stream, &ctx->locations.global_data_table_1_offset);
@@ -231,6 +236,7 @@ static void deserialize_plugins(struct save_load *restrict ctx)
 	u32 plugins_size;
 	u8 num_plugins;
 
+	DPRINT("reading plugin info at 0x%lx\n", ftell(ctx->stream.stream));
 	sf_get_u32(&ctx->stream, &plugins_size);
 	sf_get_u8(&ctx->stream, &num_plugins);
 
@@ -249,7 +255,7 @@ static void deserialize_plugins(struct save_load *restrict ctx)
 
 static void serialize_light_plugins(struct save_load *restrict ctx)
 {
-	u8 i;
+	unsigned i;
 
 	sf_put_u16(&ctx->stream, ctx->save->num_light_plugins);
 	for (i = 0u; i < ctx->save->num_light_plugins; ++i)
@@ -260,6 +266,8 @@ static void deserialize_light_plugins(struct save_load *restrict ctx)
 {
 	u16 num_plugins;
 
+	DPRINT("reading light plugin info at 0x%lx\n",
+	       ftell(ctx->stream.stream));
 	sf_get_u16(&ctx->stream, &num_plugins);
 	save_load_check_stream(ctx);
 
@@ -268,9 +276,7 @@ static void deserialize_light_plugins(struct save_load *restrict ctx)
 		save_load_fail(ctx, S_EMEM);
 
 	sf_get_s_arr(&ctx->stream, ctx->save->light_plugins, num_plugins);
-
 	save_load_check_stream(ctx);
-
 	ctx->save->num_light_plugins = num_plugins;
 }
 
@@ -280,6 +286,7 @@ static void deserialize_snapshot(struct save_load *restrict ctx)
 	struct snapshot *shot;
 	int shot_sz;
 
+	DPRINT("reading snapshot data at 0x%lx\n", ftell(ctx->stream.stream));
 	px_format = determine_snapshot_format(ctx->header.engine_version);
 	shot = create_snapshot(px_format, ctx->header.snapshot_width,
 		ctx->header.snapshot_height);

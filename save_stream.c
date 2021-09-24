@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdlib.h>
 #include <string.h>
+#include "defines.h"
 #include "save_stream.h"
 
 int sf_write(struct save_stream *restrict stream, const void *restrict src,
@@ -58,6 +59,8 @@ int sf_read(struct save_stream *restrict stream, void *restrict dest, size_t siz
 int sf_put_vsval(struct save_stream *stream, u32 value)
 {
 	unsigned i, hibytes;
+	DWARNC(value > VSVAL_MAX, "%u becomes %u\n",
+	       (unsigned)value, (unsigned)(value % (VSVAL_MAX + 1)));
 
 	value <<= 2u;
 	hibytes = (value >= 0x100u) << (value >= 0x10000u);

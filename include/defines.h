@@ -28,4 +28,21 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define ARRAY_END(a) ((a) + ARRAY_SIZE(a))
 
+#if DEBUGGING
+#	define DPRINT(fmt, ...) \
+		eprintf("debug:%s: " fmt, __func__, __VA_ARGS__)
+#	define DWARN(fmt, ...) \
+		eprintf("dwarn:%s: " fmt, __func__, __VA_ARGS__)
+
+#	define DWARNC(cond, fmt, ...) do {				\
+		if (cond)						\
+			DWARN(fmt, __VA_ARGS__);			\
+	} while (0)
+
+
+#else
+#	define DPRINT(...)
+#	define DWARNC(...)
+#endif
+
 #endif // CEGSE_DEFINES_H
