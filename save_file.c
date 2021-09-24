@@ -295,7 +295,7 @@ static void deserialize_snapshot(struct save_load *restrict ctx)
 	ctx->save->snapshot = shot;
 
 	shot_sz = get_snapshot_size(shot);
-	sf_read(&ctx->stream, get_snapshot_data(shot), shot_sz);
+	sf_read(&ctx->stream, shot->data, shot_sz);
 	save_load_check_stream(ctx);
 }
 

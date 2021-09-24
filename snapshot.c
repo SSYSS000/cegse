@@ -56,8 +56,8 @@ struct snapshot *create_snapshot(enum pixel_format format, int width, int height
 	shot->width = width;
 	shot->height = height;
 	shot_sz = get_snapshot_size(shot);
-	shot->pixels = malloc(shot_sz);
-	if (!shot->pixels) {
+	shot->data = malloc(shot_sz);
+	if (!shot->data) {
 		free(shot);
 		return NULL;
 	}
@@ -67,6 +67,6 @@ struct snapshot *create_snapshot(enum pixel_format format, int width, int height
 
 void destroy_snapshot(struct snapshot *shot)
 {
-	free(shot->pixels);
+	free(shot->data);
 	free(shot);
 }

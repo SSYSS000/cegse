@@ -28,7 +28,7 @@ struct snapshot {
 	int width;
 	int height;
 	enum pixel_format pixel_format;
-	unsigned char *pixels;
+	unsigned char *data;
 };
 
 /*
@@ -51,14 +51,6 @@ int get_snapshot_size(const struct snapshot *shot);
  * to the snapshot.
  */
 struct snapshot *create_snapshot(enum pixel_format format, int width, int height);
-
-/*
- * Get a pointer to the raw pixel data of the snapshot.
- */
-static inline unsigned char *get_snapshot_data(struct snapshot *shot)
-{
-	return shot->pixels;
-}
 
 /*
  * Destroy a snapshot, freeing its held resources. No further actions
