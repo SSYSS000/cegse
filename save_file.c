@@ -134,24 +134,27 @@ static void compose_file_header(struct file_header *restrict header,
  *
  * On success, return nonnegative integer.
  */
-static void serialize_file_header(struct save_load *restrict ctx)
+static int write_file_header(struct save_stream *restrict stream,
+	const struct file_header *header, enum game_title title)
 {
-	sf_put_u32(&ctx->stream, ctx->header.engine_version);
-	sf_put_u32(&ctx->stream, ctx->header.save_num);
-	sf_put_s  (&ctx->stream, ctx->header.ply_name);
-	sf_put_u32(&ctx->stream, ctx->header.ply_level);
-	sf_put_s  (&ctx->stream, ctx->header.ply_location);
-	sf_put_s  (&ctx->stream, ctx->header.game_time);
-	sf_put_s  (&ctx->stream, ctx->header.ply_race_id);
-	sf_put_u16(&ctx->stream, ctx->header.ply_sex);
-	sf_put_f32(&ctx->stream, ctx->header.ply_current_xp);
-	sf_put_f32(&ctx->stream, ctx->header.ply_target_xp);
-	sf_put_filetime(&ctx->stream, ctx->header.filetime);
-	sf_put_u32(&ctx->stream, ctx->header.snapshot_width);
-	sf_put_u32(&ctx->stream, ctx->header.snapshot_height);
+	sf_put_u32(stream, header->engine_version);
+	sf_put_u32(stream, header->save_num);
+	sf_put_s  (stream, header->ply_name);
+	sf_put_u32(stream, header->ply_level);
+	sf_put_s  (stream, header->ply_location);
+	sf_put_s  (stream, header->game_time);
+	sf_put_s  (stream, header->ply_race_id);
+	sf_put_u16(stream, header->ply_sex);
+	sf_put_f32(stream, header->ply_current_xp);
+	sf_put_f32(stream, header->ply_target_xp);
+	sf_put_filetime(stream, header->filetime);
+	sf_put_u32(stream, header->snapshot_width);
+	sf_put_u32(stream, header->snapshot_height);
 
-	if (uses_compression(ctx->save->game_title, ctx->header.engine_version))
-		sf_put_u16(&ctx->stream, ctx->header.compression_type);
+	if (uses_compression(title, header->engine_version))
+		sf_put_u16(stream, header->compression_type);
+
+	return -stream->status;
 }
 
 /*
@@ -159,12 +162,10 @@ static void serialize_file_header(struct save_load *restrict ctx)
  *
  * On success, return nonnegative integer.
  */
-static void deserialize_file_header(struct save_load *restrict ctx)
+static int read_file_header(struct save_stream *restrict stream,
+	struct file_header *header, enum game_title title)
 {
-	struct save_stream *restrict stream = &ctx->stream;
-	struct file_header *restrict header = &ctx->header;
-
-	DPRINT("reading file header at 0x%lx\n", ftell(ctx->stream.stream));
+	DPRINT("reading file header at 0x%lx\n", ftell(stream->stream));
 	sf_get_u32(stream, &header->engine_version);
 	sf_get_u32(stream, &header->save_num);
 	sf_get_ns (stream, header->ply_name, sizeof(header->ply_name));
@@ -179,12 +180,13 @@ static void deserialize_file_header(struct save_load *restrict ctx)
 	sf_get_u32(stream, &header->snapshot_width);
 	sf_get_u32(stream, &header->snapshot_height);
 
-	save_load_check_stream(ctx);
+	if (stream->status != S_OK)
+		return -stream->status;
 
-	if (uses_compression(ctx->save->game_title, header->engine_version))
+	if (uses_compression(title, header->engine_version))
 		sf_get_u16(stream, &header->compression_type);
 
-	save_load_check_stream(ctx);
+	return -stream->status;
 }
 
 /*
