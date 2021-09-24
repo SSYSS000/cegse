@@ -55,18 +55,15 @@ int sf_read(struct save_stream *restrict stream, void *restrict dest, size_t siz
 	return -stream->status;
 }
 
-
 int sf_put_vsval(struct save_stream *stream, u32 value)
 {
-	u32 i;
-	if (value < 0x40u)
-		return sf_put_u8(stream, value << 2u);
+	unsigned i, hibytes;
 
-	if (value < 0x4000u)
-		return sf_put_u16(stream, value << 2u | 1u);
+	value <<= 2u;
+	hibytes = (value >= 0x100u) << (value >= 0x10000u);
+	value |= hibytes;
 
-	value = value << 2u | 2u;
-	for (i = 0u; i < 3u; ++i)
+	for (i = 0u; i <= hibytes; ++i)
 		sf_put_u8(stream, value >> i * 8u);
 
 	return -stream->status;
@@ -74,22 +71,18 @@ int sf_put_vsval(struct save_stream *stream, u32 value)
 
 int sf_get_vsval(struct save_stream *restrict stream, u32 *restrict value)
 {
-	u8 byte;
-	u32 i;
+	u8 byte = 0u;
+	unsigned i;
 
 	/* Read 1 to 3 bytes into value. */
-	i = 0u;
 	*value = 0u;
-	do {
-		if (sf_get_u8(stream, &byte) < 0)
-			return -stream->status;
-
+	for (i = 0u; i <= (*value & 0x3u); ++i) {
+		sf_get_u8(stream, &byte);
 		*value |= byte << i * 8u;
-		i++;
-	} while (i < (*value & 0x3u) + 1u);
+	}
 
 	*value >>= 2u;
-	return 0;
+	return -stream->status;
 }
 
 int sf_put_s(struct save_stream *restrict stream, const char *restrict string)

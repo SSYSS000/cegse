@@ -26,15 +26,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdio.h>
 #include "types.h"
 
+#define VSVAL_MAX 4194303u
+
 struct save_stream {
 	FILE		*stream;
 	enum status_code status;
 };
-
-/*
- * NOTE: sf_* functions fail immediately if the stream has faced an error,
- * i.e. stream status != S_OK.
- */
 
 /*
  * Write exactly size bytes from src to stream.
@@ -304,6 +301,8 @@ static inline int sf_get_filetime(struct save_stream *restrict stream,
 /*
  * Write a variable-size value to stream.
  *
+ * NOTE: Values greater than VSVAL_MAX are wrapped.
+ *
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
  */
@@ -311,6 +310,8 @@ int sf_put_vsval(struct save_stream *stream, u32 value);
 
 /*
  * Read a variable-size value from stream.
+ *
+ * value is undefined on error.
  *
  * On success, return a nonnegative integer. Otherwise,
  * return the stream status negated.
