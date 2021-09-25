@@ -196,7 +196,7 @@ static void compose_file_header(struct file_header *restrict header,
 }
 
 /*
- * read_* functions do NOT free allocated resources on failure.
+ * load_* functions do NOT free allocated resources on failure.
  * The state of game_save shall be left in such a valid state that
  * destroy_game_save() can be called on it.
  */
@@ -232,12 +232,12 @@ static int write_file_header(FILE *restrict stream,
 /*
  * Deserialize a file header from stream.
  *
- * Return nonnegative integer on success or EOF on end of file or error.
+ * Return a nonnegative integer on success or EOF on end of file or error.
  */
 static int read_file_header(FILE *restrict stream,
 	struct file_header *header, enum game_title title)
 {
-	DPRINT("reading file header at 0x%lx\n", ftell(stream->stream));
+	DPRINT("reading file header at 0x%lx\n", ftell(stream));
 	sf_get_u32(stream, &header->engine_version);
 	sf_get_u32(stream, &header->save_num);
 	sf_get_bstring(stream, header->ply_name, sizeof(header->ply_name));
@@ -263,30 +263,33 @@ static int read_file_header(FILE *restrict stream,
 
 /*
  * Deserialize a file location table from stream.
+ *
+ * Return a nonnegative integer on success or EOF on end of file or error.
  */
-static void read_file_location_table(struct save_load *restrict ctx)
+static int read_file_location_table(FILE *restrict stream,
+	struct file_location_table *restrict table)
 {
 	unsigned i;
-	DPRINT("reading file location table at 0x%lx\n", ftell(ctx->stream));
-	sf_get_u32(ctx->stream, &ctx->locations.form_id_array_count_offset);
-	sf_get_u32(ctx->stream, &ctx->locations.unknown_table_3_offset);
-	sf_get_u32(ctx->stream, &ctx->locations.global_data_table_1_offset);
-	sf_get_u32(ctx->stream, &ctx->locations.global_data_table_2_offset);
-	sf_get_u32(ctx->stream, &ctx->locations.change_forms_offset);
-	sf_get_u32(ctx->stream, &ctx->locations.global_data_table_3_offset);
-	sf_get_u32(ctx->stream, &ctx->locations.global_data_table_1_count);
-	sf_get_u32(ctx->stream, &ctx->locations.global_data_table_2_count);
-	sf_get_u32(ctx->stream, &ctx->locations.global_data_table_3_count);
-	sf_get_u32(ctx->stream, &ctx->locations.change_form_count);
+	DPRINT("reading file location table at 0x%lx\n", ftell(stream));
+	sf_get_u32(stream, &table->form_id_array_count_offset);
+	sf_get_u32(stream, &table->unknown_table_3_offset);
+	sf_get_u32(stream, &table->global_data_table_1_offset);
+	sf_get_u32(stream, &table->global_data_table_2_offset);
+	sf_get_u32(stream, &table->change_forms_offset);
+	sf_get_u32(stream, &table->global_data_table_3_offset);
+	sf_get_u32(stream, &table->global_data_table_1_count);
+	sf_get_u32(stream, &table->global_data_table_2_count);
+	sf_get_u32(stream, &table->global_data_table_3_count);
+	sf_get_u32(stream, &table->change_form_count);
 
 	/* Skip unused. */
 	for (i = 0u; i < sizeof(u32[15]); ++i)
-		fgetc(ctx->stream);
+		fgetc(stream);
 
-	save_load_check_stream(ctx);
+	return (ferror(stream) || feof(stream)) ? EOF : 0;
 }
 
-static void write_plugins(struct save_load *restrict ctx)
+static void save_plugins(struct save_load *restrict ctx)
 {
 	u32 plugins_size;
 	long start_pos;
@@ -307,7 +310,7 @@ static void write_plugins(struct save_load *restrict ctx)
 	fseek(ctx->stream, end_pos, SEEK_SET);
 }
 
-static void read_plugins(struct save_load *restrict ctx)
+static void load_plugins(struct save_load *restrict ctx)
 {
 	u32 plugins_size;
 	u8 num_plugins;
@@ -334,7 +337,7 @@ static void read_plugins(struct save_load *restrict ctx)
 	}
 }
 
-static void write_light_plugins(struct save_load *restrict ctx)
+static void save_light_plugins(struct save_load *restrict ctx)
 {
 	unsigned i;
 
@@ -343,7 +346,7 @@ static void write_light_plugins(struct save_load *restrict ctx)
 		sf_put_bstring(ctx->stream, ctx->save->light_plugins[i]);
 }
 
-static void read_light_plugins(struct save_load *restrict ctx)
+static void load_light_plugins(struct save_load *restrict ctx)
 {
 	u16 num_plugins;
 	unsigned i;
@@ -451,7 +454,7 @@ out_cleanup:
 	return ret;
 }
 
-static void read_save_data(struct save_load *restrict ctx)
+static void load_save_data(struct save_load *restrict ctx)
 {
 	sf_get_u8(ctx->stream, &ctx->format);
 	ctx->save->file_format = ctx->format;
@@ -460,18 +463,18 @@ static void read_save_data(struct save_load *restrict ctx)
 		sf_get_bstring(ctx->stream, ctx->save->game_version,
 			sizeof(ctx->save->game_version));
 
-	read_plugins(ctx);
+	load_plugins(ctx);
 
 	if (has_light_plugins(ctx->title, ctx->engine, ctx->format))
-		read_light_plugins(ctx);
+		load_light_plugins(ctx);
 
-	read_file_location_table(ctx);
+	read_file_location_table(ctx->stream, &ctx->locations);
 
 	/* TODO: Read the rest. */
 
 }
 
-static void read_file_body(struct save_load *restrict ctx)
+static void load_file_body(struct save_load *restrict ctx)
 {
 	u32 decompressed_size;
 	u32 compressed_size;
@@ -495,10 +498,10 @@ static void read_file_body(struct save_load *restrict ctx)
 		ctx->stream = ctx->compress;
 	}
 
-	read_save_data(ctx);
+	load_save_data(ctx);
 }
 
-static void read_snapshot(struct save_load *restrict ctx, int width, int height)
+static void load_snapshot(struct save_load *restrict ctx, int width, int height)
 {
 	enum pixel_format px_format;
 	int shot_sz;
@@ -513,7 +516,7 @@ static void read_snapshot(struct save_load *restrict ctx, int width, int height)
 	fread(ctx->save->snapshot->data, shot_sz, 1u, ctx->stream);
 }
 
-static void read_file(struct save_load *restrict ctx)
+static void load_file(struct save_load *restrict ctx)
 {
 	struct file_header header;
 	u32 header_sz;
@@ -526,8 +529,8 @@ static void read_file(struct save_load *restrict ctx)
 	ctx->compression_method = header.compression_method;
 	ctx->save->time_saved = filetime_to_time(header.filetime);
 
-	read_snapshot(ctx, header.snapshot_width, header.snapshot_height);
-	read_file_body(ctx);
+	load_snapshot(ctx, header.snapshot_width, header.snapshot_height);
+	load_file_body(ctx);
 }
 
 int load_game_save(struct game_save *restrict save, FILE *restrict stream)
@@ -536,11 +539,12 @@ int load_game_save(struct game_save *restrict save, FILE *restrict stream)
 	struct save_load sl = {
 		.stream = stream,
 		.loader_env = &env,
-		.save = save
+		.save = save,
+		.title = save->game_title
 	};
 
 	if (!setjmp(env))
-		read_file(&sl);
+		load_file(&sl);
 
 	if (sl.compress)
 		fclose(sl.compress);
