@@ -32,12 +32,6 @@ struct snapshot {
 };
 
 /*
- * Find out what type of snapshot pixel format the engine uses
- * and return it.
- */
-enum pixel_format determine_snapshot_format(int engine_version);
-
-/*
  * Calculate the size of the snapshot pixels in bytes
  * and return it.
  */

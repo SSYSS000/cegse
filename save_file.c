@@ -29,6 +29,56 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "save_file.h"
 #include "snapshot.h"
 
+enum compression_method {
+	COMPRESS_NONE,
+	COMPRESS_ZLIB,
+	COMPRESS_LZ4,
+};
+
+struct file_header {
+	u32 	engine_version;		/* Creation Engine version */
+	u32 	save_num;
+	char 	ply_name[64];		/* Player name */
+	u32 	ply_level;
+	char 	ply_location[128];
+	char 	game_time[48];		/* Playtime or in-game date */
+	char 	ply_race_id[48];
+	u16 	ply_sex;
+	f32 	ply_current_xp;
+	f32 	ply_target_xp;
+	FILETIME filetime;
+	u32 	snapshot_width;
+	u32 	snapshot_height;
+	u16 	compression_method;
+};
+
+struct file_location_table {
+	u32 form_id_array_count_offset;
+	u32 unknown_table_3_offset;
+	u32 global_data_table_1_offset;
+	u32 global_data_table_2_offset;
+	u32 change_forms_offset;
+	u32 global_data_table_3_offset;
+	u32 global_data_table_1_count;
+	u32 global_data_table_2_count;
+	u32 global_data_table_3_count;
+	u32 change_form_count;
+};
+
+struct save_load {
+	struct save_stream 	stream;
+	struct file_location_table locations;
+	u8		   	format;
+	u32			engine;
+	enum game_title 	title;
+	enum status_code	status;
+	enum compression_method	compression_method;
+	FILE 			*compress; /* tmpfile for (de)compression */
+	jmp_buf			*loader_env;
+	struct game_save   	*save;
+
+};
+
 /*
  * Convert a FILETIME to a time_t. Note that FILETIME is more accurate
  * than time_t.
@@ -49,17 +99,17 @@ static inline FILETIME time_to_filetime(time_t t)
 /*
  * Check if Skyrim Special Edition uses _engine_ version.
  */
-static inline bool is_skse(unsigned engine)
+static inline bool is_skse(enum game_title title, unsigned engine)
 {
-	return engine == 12u;
+	return title == SKYRIM && engine == 12u;
 }
 
 /*
  * Check if Skyrim Legendary Edition uses _engine_ version.
  */
-static inline bool is_skle(unsigned engine)
+static inline bool is_skle(enum game_title title, unsigned engine)
 {
-	return 7u <= engine && engine <= 9u;
+	return title == SKYRIM && 7u <= engine && engine <= 9u;
 }
 
 /*
@@ -67,7 +117,25 @@ static inline bool is_skle(unsigned engine)
  */
 static inline bool uses_compression(enum game_title title, unsigned engine)
 {
-	return title == SKYRIM && is_skse(engine);
+	return is_skse(title, engine);
+}
+
+static inline
+bool has_light_plugins(enum game_title title, unsigned engine, unsigned format)
+{
+	return is_skse(title, engine) && format >= 78u;
+}
+
+/*
+ * Find out what type of snapshot pixel format the engine uses
+ * and return it.
+ */
+enum pixel_format determine_snapshot_format(unsigned engine)
+{
+	if (engine >= 11u)
+		return PXFMT_RGBA;
+
+	return PXFMT_RGB;
 }
 
 int file_compare(FILE *restrict stream, const void *restrict data, int num)
@@ -91,12 +159,13 @@ int file_compare(FILE *restrict stream, const void *restrict data, int num)
 }
 
 /*
- * Fail save load, returning to whomever owns it.
+ * Fail save load, returning to the loader.
  */
 noreturn static inline
 void save_load_fail(struct save_load *ctx, enum status_code error)
 {
-	longjmp(ctx->jmpbuf, error);
+	ctx->status = error;
+	longjmp(*ctx->loader_env, 1);
 }
 
 /*
@@ -135,7 +204,7 @@ static void compose_file_header(struct file_header *restrict header,
  * On success, return nonnegative integer.
  */
 static int write_file_header(struct save_stream *restrict stream,
-	const struct file_header *header, enum game_title title)
+	const struct file_header *restrict header, enum game_title title)
 {
 	sf_put_u32(stream, header->engine_version);
 	sf_put_u32(stream, header->save_num);
@@ -152,7 +221,7 @@ static int write_file_header(struct save_stream *restrict stream,
 	sf_put_u32(stream, header->snapshot_height);
 
 	if (uses_compression(title, header->engine_version))
-		sf_put_u16(stream, header->compression_type);
+		sf_put_u16(stream, header->compression_method);
 
 	return -stream->status;
 }
@@ -184,7 +253,7 @@ static int read_file_header(struct save_stream *restrict stream,
 		return -stream->status;
 
 	if (uses_compression(title, header->engine_version))
-		sf_get_u16(stream, &header->compression_type);
+		sf_get_u16(stream, &header->compression_method);
 
 	return -stream->status;
 }
@@ -282,25 +351,6 @@ static void read_light_plugins(struct save_load *restrict ctx)
 	ctx->save->num_light_plugins = num_plugins;
 }
 
-static void read_snapshot(struct save_load *restrict ctx)
-{
-	enum pixel_format px_format;
-	struct snapshot *shot;
-	int shot_sz;
-
-	DPRINT("reading snapshot data at 0x%lx\n", ftell(ctx->stream.stream));
-	px_format = determine_snapshot_format(ctx->header.engine_version);
-	shot = create_snapshot(px_format, ctx->header.snapshot_width,
-		ctx->header.snapshot_height);
-	if (!shot)
-		save_load_fail(ctx, S_EMEM);
-	ctx->save->snapshot = shot;
-
-	shot_sz = get_snapshot_size(shot);
-	sf_read(&ctx->stream, shot->data, shot_sz);
-	save_load_check_stream(ctx);
-}
-
 /*
  * Compress input_size bytes from istream to ostream using LZ4.
  *
@@ -390,13 +440,13 @@ static void read_save_data(struct save_load *restrict ctx)
 	sf_get_u8(&ctx->stream, &ctx->format);
 	ctx->save->file_format = ctx->format;
 
-	if (ctx->header.engine_version == 11u)
+	if (ctx->title == FALLOUT4)
 		sf_get_ns(&ctx->stream, ctx->save->game_version,
 			sizeof(ctx->save->game_version));
 
 	read_plugins(ctx);
 
-	if (ctx->header.engine_version == 12u && ctx->format >= 78)
+	if (has_light_plugins(ctx->title, ctx->engine, ctx->format))
 		read_light_plugins(ctx);
 
 	read_file_location_table(ctx);
@@ -411,9 +461,7 @@ static void read_file_body(struct save_load *restrict ctx)
 	u32 compressed_size;
 	int rc;
 
-	read_snapshot(ctx);
-
-	if (ctx->header.compression_type) {
+	if (ctx->compression_method) {
 		sf_get_u32(&ctx->stream, &decompressed_size);
 		sf_get_u32(&ctx->stream, &compressed_size);
 		save_load_check_stream(ctx);
@@ -434,32 +482,52 @@ static void read_file_body(struct save_load *restrict ctx)
 	read_save_data(ctx);
 }
 
+static void read_snapshot(struct save_load *restrict ctx, int width, int height)
+{
+	enum pixel_format px_format;
+	int shot_sz;
+
+	px_format = determine_snapshot_format(ctx->engine);
+	ctx->save->snapshot = create_snapshot(px_format, width, height);
+	if (!ctx->save->snapshot)
+		save_load_fail(ctx, S_EMEM);
+	shot_sz = get_snapshot_size(ctx->save->snapshot);
+
+	DPRINT("reading snapshot data at 0x%lx\n", ftell(ctx->stream.stream));
+	sf_read(&ctx->stream, ctx->save->snapshot->data, shot_sz);
+}
+
 static void read_file(struct save_load *restrict ctx)
 {
+	struct file_header header;
 	u32 header_sz;
 
 	sf_get_u32(&ctx->stream, &header_sz);
-	read_file_header(ctx);
+	read_file_header(&ctx->stream, &header, ctx->title);
+	save_load_check_stream(ctx);
 
-	ctx->save->engine_version = ctx->header.engine_version;
-	ctx->save->time_saved = filetime_to_time(ctx->header.filetime);
+	ctx->engine = header.engine_version;
+	ctx->compression_method = header.compression_method;
+	ctx->save->time_saved = filetime_to_time(header.filetime);
 
+	read_snapshot(ctx, header.snapshot_width, header.snapshot_height);
 	read_file_body(ctx);
 }
 
 int load_game_save(struct game_save *restrict save, FILE *restrict stream)
 {
-	struct save_load sl = {0};
-	int ret;
+	jmp_buf env;
+	struct save_load sl = {
+		.stream = { stream },
+		.loader_env = &env,
+		.save = save
+	};
 
-	sl.stream.stream = stream;
-	sl.save = save;
-	ret = setjmp(sl.jmpbuf);
-	if (ret == 0)
+	if (!setjmp(env))
 		read_file(&sl);
 
 	if (sl.compress)
 		fclose(sl.compress);
 
-	return -ret;
+	return -sl.status;
 }

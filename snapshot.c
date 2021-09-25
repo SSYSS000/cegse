@@ -24,13 +24,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "types.h"
 #include "snapshot.h"
 
-enum pixel_format determine_snapshot_format(int engine_version)
-{
-	if (engine_version >= 11)
-		return PXFMT_RGBA;
-
-	return PXFMT_RGB;
-}
 
 int get_snapshot_size(const struct snapshot *shot)
 {
