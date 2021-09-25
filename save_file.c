@@ -283,8 +283,10 @@ static int read_file_location_table(FILE *restrict stream,
 	sf_get_u32(stream, &table->change_form_count);
 
 	/* Skip unused. */
-	for (i = 0u; i < sizeof(u32[15]); ++i)
-		fgetc(stream);
+	if (fseek(stream, sizeof(u32[15]), SEEK_CUR) != 0) {
+		perror("fseek");
+		return EOF;
+	}
 
 	return (ferror(stream) || feof(stream)) ? EOF : 0;
 }
