@@ -23,19 +23,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <string.h>
 #include <assert.h>
 #include <setjmp.h>
-#include <lz4.h>
 #include <stdnoreturn.h>
 #include <stdbool.h>
 #include "defines.h"
 #include "save_file.h"
 #include "save_stream.h"
+#include "compression.h"
 #include "types.h"
-
-enum compression_method {
-	COMPRESS_NONE,
-	COMPRESS_ZLIB,
-	COMPRESS_LZ4,
-};
 
 struct file_header {
 	u32 	engine_version;		/* Creation Engine version */
@@ -354,84 +348,6 @@ static void load_light_plugins(struct save_load *restrict ctx)
 	}
 }
 
-#if 0
-/*
- * Compress input_size bytes from istream to ostream using LZ4.
- *
- * Return the number of compressed bytes written to ostream.
- * On file error, return -S_EFILE.
- * On memory allocation error, return -S_EMEM.
- * On unexpected EOF, return -S_EOF.
- */
-static int compress_lz4(FILE *restrict istream, FILE *restrict ostream,
-			int input_size)
-{
-	int ret;
-	int output_size = LZ4_compressBound(input_size);
-	int comp_size;
-	char *output_buffer = malloc(output_size);
-	char *input_buffer = malloc(input_size);
-	if (!output_buffer || !input_buffer) {
-		ret = -S_EMEM;
-		goto out_cleanup;
-	}
-
-
-	if ((int)fread(input_buffer, 1, input_size, istream) < input_size) {
-		ret = feof(istream) ? -S_EOF : -S_EFILE;
-		goto out_cleanup;
-	}
-
-	comp_size = LZ4_compress_default(input_buffer, output_buffer,
-					 input_size, output_size);
-
-	if ((int)fwrite(output_buffer, 1, comp_size, ostream) < comp_size) {
-		ret = -S_EFILE;
-		goto out_cleanup;
-	}
-	ret = comp_size;
-out_cleanup:
-	free(output_buffer);
-	free(input_buffer);
-	return ret;
-}
-#endif
-
-static void decompress_lz4(struct save_load *ctx, u32 csize, u32 dsize)
-{
-	int err = 0;
-	int lz4_ret;
-	char *cbuf = malloc(csize);
-	char *dbuf = malloc(dsize);
-	if (!cbuf || !dbuf) {
-		err = S_EMEM;
-		goto out_cleanup;
-	}
-
-	if (!fread(cbuf, csize, 1u, ctx->stream)) {
-		err = feof(ctx->stream) ? S_EOF : S_EFILE;
-		goto out_cleanup;
-	}
-
-	lz4_ret = LZ4_decompress_safe(cbuf, dbuf, csize, dsize);
-
-	if (lz4_ret < 0) {
-		err = S_EMALFORMED;
-		goto out_cleanup;
-	}
-
-	if (!fwrite(dbuf, dsize, 1u, ctx->compress)) {
-		err = S_EFILE;
-		goto out_cleanup;
-	}
-
-out_cleanup:
-	free(cbuf);
-	free(dbuf);
-	if (err)
-		save_load_fail(ctx, err);
-}
-
 static void load_save_data(struct save_load *restrict ctx)
 {
 	sf_get_u8(ctx->stream, &ctx->format);
@@ -454,11 +370,11 @@ static void load_save_data(struct save_load *restrict ctx)
 
 static void load_file_body(struct save_load *restrict ctx)
 {
-	u32 decompressed_size;
-	u32 compressed_size;
+	u32 dsize, csize;
+	int dret;
 
-	sf_get_u32(ctx->stream, &decompressed_size);
-	sf_get_u32(ctx->stream, &compressed_size);
+	sf_get_u32(ctx->stream, &dsize);
+	sf_get_u32(ctx->stream, &csize);
 	save_load_check_stream(ctx);
 
 	if (ctx->compression_method) {
@@ -475,9 +391,13 @@ static void load_file_body(struct save_load *restrict ctx)
 			break;
 
 		case COMPRESS_LZ4:
-			decompress_lz4(ctx, compressed_size, decompressed_size);
+			dret = decompress_lz4(ctx->stream, ctx->compress, csize,
+				dsize);
 			break;
 		}
+
+		if (dret != 0)
+			save_load_fail(ctx, -dret);
 
 		rewind(ctx->compress);
 		ctx->stream = ctx->compress;

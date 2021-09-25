@@ -6,6 +6,7 @@ OBJS = 	snapshot.o \
 	save_file.o \
 	game_save.o \
 	save_stream.o \
+	compression.o \
 
 TARGET = cegse
 
