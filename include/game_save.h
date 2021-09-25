@@ -80,14 +80,13 @@ const struct game *identify_game_save_game(FILE *stream);
  * Return a pointer to an initialized game save or
  * return NULL if memory allocation fails.
  */
-struct game_save* create_game_save(enum game_title game_title,
-				   int engine_version);
+struct game_save* game_save_new(enum game_title game_title, int engine_version);
 
 /*
  * Destroy a game save, freeing its held resources.
  *
  * Further use of the game save results in undefined behavior.
  */
-void destroy_game_save(struct game_save *save);
+void game_save_free(struct game_save *save);
 
 #endif /* CEGSE_GAME_SAVE_H */

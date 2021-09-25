@@ -38,7 +38,7 @@ int get_snapshot_size(const struct snapshot *shot)
 	}
 }
 
-struct snapshot *create_snapshot(enum pixel_format format, int width, int height)
+struct snapshot *snapshot_new(enum pixel_format format, int width, int height)
 {
 	struct snapshot *shot;
 	int shot_sz;
@@ -58,7 +58,7 @@ struct snapshot *create_snapshot(enum pixel_format format, int width, int height
 	return shot;
 }
 
-void destroy_snapshot(struct snapshot *shot)
+void snapshot_free(struct snapshot *shot)
 {
 	free(shot->data);
 	free(shot);

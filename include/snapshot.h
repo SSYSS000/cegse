@@ -44,12 +44,12 @@ int get_snapshot_size(const struct snapshot *shot);
  * On memory allocation error, return NULL. Otherwise, return a pointer
  * to the snapshot.
  */
-struct snapshot *create_snapshot(enum pixel_format format, int width, int height);
+struct snapshot *snapshot_new(enum pixel_format format, int width, int height);
 
 /*
  * Destroy a snapshot, freeing its held resources. No further actions
  * should be performed on a destroyed snapshot.
  */
-void destroy_snapshot(struct snapshot *shot);
+void snapshot_free(struct snapshot *shot);
 
 #endif /* CEGSE_SNAPSHOT_H */

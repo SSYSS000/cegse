@@ -490,7 +490,7 @@ static void load_snapshot(struct save_load *restrict ctx, int width, int height)
 	int shot_sz;
 
 	px_format = determine_snapshot_format(ctx->engine);
-	ctx->save->snapshot = create_snapshot(px_format, width, height);
+	ctx->save->snapshot = snapshot_new(px_format, width, height);
 	if (!ctx->save->snapshot)
 		save_load_fail(ctx, S_EMEM);
 	shot_sz = get_snapshot_size(ctx->save->snapshot);

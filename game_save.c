@@ -60,7 +60,7 @@ const struct game *identify_game_save_game(FILE *stream)
 	return NULL;
 }
 
-struct game_save* create_game_save(enum game_title game_title,
+struct game_save* game_save_new(enum game_title game_title,
 				   int engine_version)
 {
 	struct game_save *save = calloc(1, sizeof(*save));
@@ -72,12 +72,12 @@ struct game_save* create_game_save(enum game_title game_title,
 	return save;
 }
 
-void destroy_game_save(struct game_save *save)
+void game_save_free(struct game_save *save)
 {
 	unsigned i;
 
 	if (save->snapshot)
-		destroy_snapshot(save->snapshot);
+		snapshot_free(save->snapshot);
 
 	for (i = 0u; i < save->num_plugins; ++i)
 		free(save->plugins[i]);
