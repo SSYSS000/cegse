@@ -267,8 +267,7 @@ static int read_file_header(FILE *restrict stream,
 static void read_file_location_table(struct save_load *restrict ctx)
 {
 	unsigned i;
-	DPRINT("reading file location table at 0x%lx\n",
-	       ftell(ctx->stream.stream));
+	DPRINT("reading file location table at 0x%lx\n", ftell(ctx->stream));
 	sf_get_u32(ctx->stream, &ctx->locations.form_id_array_count_offset);
 	sf_get_u32(ctx->stream, &ctx->locations.unknown_table_3_offset);
 	sf_get_u32(ctx->stream, &ctx->locations.global_data_table_1_offset);
@@ -314,7 +313,7 @@ static void read_plugins(struct save_load *restrict ctx)
 	u8 num_plugins;
 	unsigned i;
 
-	DPRINT("reading plugin info at 0x%lx\n", ftell(ctx->stream.stream));
+	DPRINT("reading plugin info at 0x%lx\n", ftell(ctx->stream));
 	sf_get_u32(ctx->stream, &plugins_size);
 	sf_get_u8(ctx->stream, &num_plugins);
 
@@ -349,8 +348,7 @@ static void read_light_plugins(struct save_load *restrict ctx)
 	u16 num_plugins;
 	unsigned i;
 
-	DPRINT("reading light plugin info at 0x%lx\n",
-	       ftell(ctx->stream.stream));
+	DPRINT("reading light plugin info at 0x%lx\n", ftell(ctx->stream));
 	sf_get_u16(ctx->stream, &num_plugins);
 	save_load_check_stream(ctx);
 
@@ -511,7 +509,7 @@ static void read_snapshot(struct save_load *restrict ctx, int width, int height)
 		save_load_fail(ctx, S_EMEM);
 	shot_sz = get_snapshot_size(ctx->save->snapshot);
 
-	DPRINT("reading snapshot data at 0x%lx\n", ftell(ctx->stream.stream));
+	DPRINT("reading snapshot data at 0x%lx\n", ftell(ctx->stream));
 	fread(ctx->save->snapshot->data, shot_sz, 1u, ctx->stream);
 }
 
