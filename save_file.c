@@ -370,6 +370,7 @@ static void load_light_plugins(struct save_load *restrict ctx)
 	}
 }
 
+#if 0
 /*
  * Compress input_size bytes from istream to ostream using LZ4.
  *
@@ -410,48 +411,41 @@ out_cleanup:
 	free(input_buffer);
 	return ret;
 }
+#endif
 
-/*
- * Decompress comp_size bytes into decomp_size bytes from istream to ostream
- * using LZ4.
- *
- * Return the number of decompressed bytes written to ostream.
- * On file error, return -S_EFILE.
- * On memory allocation error, return -S_EMEM.
- * On unexpected EOF, return -S_EOF.
- * On malformed data detection, return -S_EMALFORMED.
- */
-static int decompress_lz4(FILE *restrict istream, FILE *restrict ostream,
-			  int comp_size, int decomp_size)
+static void decompress_lz4(struct save_load *ctx, u32 csize, u32 dsize)
 {
-	int ret;
-	int num_decomp;
-	char *comp_buf = malloc(comp_size);
-	char *decomp_buf = malloc(decomp_size);
-	if (!comp_buf || !decomp_buf) {
-		ret = -S_EMEM;
+	int err = 0;
+	int lz4_ret;
+	char *cbuf = malloc(csize);
+	char *dbuf = malloc(dsize);
+	if (!cbuf || !dbuf) {
+		err = S_EMEM;
 		goto out_cleanup;
 	}
-	if ((int)fread(comp_buf, 1, comp_size, istream) < comp_size) {
-		ret = feof(istream) ? -S_EOF : -S_EFILE;
+
+	if (!fread(cbuf, csize, 1u, ctx->stream)) {
+		err = feof(ctx->stream) ? S_EOF : S_EFILE;
 		goto out_cleanup;
 	}
-	num_decomp = LZ4_decompress_safe(comp_buf, decomp_buf, comp_size,
-					 decomp_size);
-	if (num_decomp < 0) {
-		 /* Also possible that buffer capacity was insufficient... */
-		ret = -S_EMALFORMED;
+
+	lz4_ret = LZ4_decompress_safe(cbuf, dbuf, csize, dsize);
+
+	if (lz4_ret < 0) {
+		err = S_EMALFORMED;
 		goto out_cleanup;
 	}
-	if ((int)fwrite(decomp_buf, 1, decomp_size, ostream) < decomp_size) {
-		ret = -S_EFILE;
+
+	if (!fwrite(dbuf, dsize, 1u, ctx->compress)) {
+		err = S_EFILE;
 		goto out_cleanup;
 	}
-	ret = num_decomp;
+
 out_cleanup:
-	free(comp_buf);
-	free(decomp_buf);
-	return ret;
+	free(cbuf);
+	free(dbuf);
+	if (err)
+		save_load_fail(ctx, err);
 }
 
 static void load_save_data(struct save_load *restrict ctx)
@@ -478,22 +472,29 @@ static void load_file_body(struct save_load *restrict ctx)
 {
 	u32 decompressed_size;
 	u32 compressed_size;
-	int rc;
+
+	sf_get_u32(ctx->stream, &decompressed_size);
+	sf_get_u32(ctx->stream, &compressed_size);
+	save_load_check_stream(ctx);
 
 	if (ctx->compression_method) {
-		sf_get_u32(ctx->stream, &decompressed_size);
-		sf_get_u32(ctx->stream, &compressed_size);
-		save_load_check_stream(ctx);
-
 		ctx->compress = tmpfile();
 		if (!ctx->compress) {
 			perror("tmpfile");
 			save_load_fail(ctx, S_EFILE);
 		}
-		rc = decompress_lz4(ctx->stream, ctx->compress,
-			compressed_size, decompressed_size);
-		if (rc < 0)
-			save_load_fail(ctx, -rc);
+
+		switch (ctx->compression_method) {
+		case COMPRESS_ZLIB:
+			eprintf("zlib decompression not implemented.\n");
+			exit(1);
+			break;
+
+		case COMPRESS_LZ4:
+			decompress_lz4(ctx, compressed_size, decompressed_size);
+			break;
+		}
+
 		rewind(ctx->compress);
 		ctx->stream = ctx->compress;
 	}
