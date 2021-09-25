@@ -245,7 +245,6 @@ static int read_file_header(FILE *restrict stream,
 static int read_file_location_table(FILE *restrict stream,
 	struct file_location_table *restrict table)
 {
-	unsigned i;
 	DPRINT("reading file location table at 0x%lx\n", ftell(stream));
 	sf_get_u32(stream, &table->form_id_array_count_offset);
 	sf_get_u32(stream, &table->unknown_table_3_offset);
