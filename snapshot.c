@@ -23,7 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdlib.h>
 #include "snapshot.h"
 
-int get_snapshot_size(const struct snapshot *shot)
+int snapshot_size(const struct snapshot *shot)
 {
 	int n_pixels = shot->width * shot->height;
 	switch (shot->pixel_format) {
@@ -46,7 +46,7 @@ struct snapshot *snapshot_new(enum pixel_format format, int width, int height)
 	shot->pixel_format = format;
 	shot->width = width;
 	shot->height = height;
-	shot_sz = get_snapshot_size(shot);
+	shot_sz = snapshot_size(shot);
 	shot->data = malloc(shot_sz);
 	if (!shot->data) {
 		free(shot);

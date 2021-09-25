@@ -415,7 +415,7 @@ static void load_snapshot(struct save_load *restrict ctx, int width, int height)
 	ctx->save->snapshot = snapshot_new(px_format, width, height);
 	if (!ctx->save->snapshot)
 		save_load_fail(ctx, S_EMEM);
-	shot_sz = get_snapshot_size(ctx->save->snapshot);
+	shot_sz = snapshot_size(ctx->save->snapshot);
 
 	DPRINT("reading snapshot data at 0x%lx\n", ftell(ctx->stream));
 	fread(ctx->save->snapshot->data, shot_sz, 1u, ctx->stream);
