@@ -50,7 +50,7 @@ const struct game *identify_game_save_game(FILE *stream)
 	const struct game *i;
 
 	for (i = supported_games; i != ARRAY_END(supported_games); ++i) {
-		rc = file_compare(stream, i->magic_bytes, i->magic_size);
+		rc = sf_compare(stream, i->magic_bytes, i->magic_size);
 		if (rc == -S_EFILE)
 			return NULL;
 		else if (rc == 0)

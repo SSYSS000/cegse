@@ -29,17 +29,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "game_save.h"
 #include "save_stream.h"
 
-/*
- * Compare the next num bytes in stream with data.
- *
- * If equal, return 0. If unequal or EOF is reached,
- * seek the file back to the original position and return 1.
- *
- * The size of data should not be less than num.
- *
- * On file error, return -S_EFILE.
- */
-int file_compare(FILE *restrict stream, const void *restrict data, int num);
 
 int load_game_save(struct game_save *restrict save, FILE *restrict stream);
 

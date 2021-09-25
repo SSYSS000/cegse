@@ -138,26 +138,6 @@ enum pixel_format determine_snapshot_format(unsigned engine)
 	return PXFMT_RGB;
 }
 
-int file_compare(FILE *restrict stream, const void *restrict data, int num)
-{
-	int c;
-	int i;
-
-	for (i = 0; i < num; ++i) {
-		c = fgetc(stream);
-		if (c == EOF && ferror(stream))
-			return -S_EFILE;
-
-		if (c != (int)((u8 *)data)[i]) {
-			fseek(stream, -(i + 1), SEEK_CUR);
-			return 1;
-		}
-
-	}
-
-	return 0;
-}
-
 /*
  * Fail save load, returning to the loader.
  */
