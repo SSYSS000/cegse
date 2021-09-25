@@ -24,39 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "defines.h"
 #include "save_stream.h"
 
-int sf_write(struct save_stream *restrict stream, const void *restrict src,
-	     size_t size)
-{
-	size_t n_written;
-	if (stream->status != S_OK)
-		return -stream->status;
-
-	n_written = fwrite(src, 1u, size, stream->stream);
-	if (n_written < size) {
-		stream->status = S_EFILE;
-	}
-
-	return -stream->status;
-}
-
-int sf_read(struct save_stream *restrict stream, void *restrict dest, size_t size)
-{
-	size_t n_read;
-	if (stream->status != S_OK)
-		return -stream->status;
-
-	n_read = fread(dest, 1u, size, stream->stream);
-	if (n_read < size) {
-		if (feof(stream->stream))
-			stream->status = S_EOF;
-		else
-			stream->status = S_EFILE;
-	}
-
-	return -stream->status;
-}
-
-int sf_put_vsval(struct save_stream *stream, u32 value)
+int sf_put_vsval(FILE *stream, u32 value)
 {
 	unsigned i, hibytes;
 	DWARNC(value > VSVAL_MAX, "%u becomes %u\n",
@@ -66,13 +34,15 @@ int sf_put_vsval(struct save_stream *stream, u32 value)
 	hibytes = (value >= 0x100u) << (value >= 0x10000u);
 	value |= hibytes;
 
-	for (i = 0u; i <= hibytes; ++i)
-		sf_put_u8(stream, value >> i * 8u);
+	for (i = 0u; i <= hibytes; ++i) {
+		if (sf_put_u8(stream, value >> i * 8u) == EOF)
+			return EOF;
+	}
 
-	return -stream->status;
+	return hibytes;
 }
 
-int sf_get_vsval(struct save_stream *restrict stream, u32 *restrict value)
+int sf_get_vsval(FILE *restrict stream, u32 *restrict value)
 {
 	u8 byte = 0u;
 	unsigned i;
@@ -80,79 +50,70 @@ int sf_get_vsval(struct save_stream *restrict stream, u32 *restrict value)
 	/* Read 1 to 3 bytes into value. */
 	*value = 0u;
 	for (i = 0u; i <= (*value & 0x3u); ++i) {
-		sf_get_u8(stream, &byte);
+		if (sf_get_u8(stream, &byte) == EOF)
+			return EOF;
 		*value |= byte << i * 8u;
 	}
 
 	*value >>= 2u;
-	return -stream->status;
+	return i - 1u;
 }
 
-int sf_put_s(struct save_stream *restrict stream, const char *restrict string)
+int sf_put_bstring(FILE *restrict stream, const char *restrict string)
 {
 	u16 len = strlen(string);
-	sf_put_u16(stream, len);
-	sf_write(stream, string, len);
-	return -stream->status;
+
+	if (sf_put_u16(stream, len) == EOF)
+		return EOF;
+
+	return fwrite(string, len, 1u, stream) ? len : EOF;
 }
 
-int sf_get_s(struct save_stream *restrict stream, char **restrict dest)
+int sf_get_bstring(FILE *restrict stream, char *restrict buf, size_t buf_size)
+{
+	unsigned read_len;
+	unsigned i;
+	u16 bs_len;
+
+	if (sf_get_u16(stream, &bs_len) == EOF)
+		return EOF;
+
+	read_len = buf_size > bs_len ? bs_len : (buf_size - 1);
+
+	if (!fread(buf, read_len, 1u, stream) && read_len != 0)
+		return EOF;
+
+	buf[read_len] = '\0';
+
+	/* Make sure we're past the bstring. */
+	for (i = 0u; i < bs_len - read_len; ++i) {
+		if (fgetc(stream) == EOF)
+			return EOF;
+	}
+
+	DWARNC(read_len != bs_len,
+	       "truncated bstring due to insufficient buffer size\n");
+
+	return read_len;
+}
+
+char *sf_malloc_bstring(FILE *restrict stream)
 {
 	char *string;
 	u16 len;
 
-	if (sf_get_u16(stream, &len) < 0)
-		return -stream->status;
+	if (sf_get_u16(stream, &len) == EOF)
+		return NULL;
 
 	string = malloc(len + 1);
-	if (!string) {
-		stream->status = S_EMEM;
-		return -S_EMEM;
-	}
+	if (!string)
+		return NULL;
 
-	if (sf_read(stream, string, len) < 0) {
+	if (!fread(string, len, 1u, stream)) {
 		free(string);
-		return -stream->status;
+		return NULL;
 	}
 
 	string[len] = '\0';
-	*dest = string;
-	return len;
-}
-
-int sf_get_s_arr(struct save_stream *restrict stream, char **restrict array,
-	int len)
-{
-	int array_len = 0;
-	for (; array_len < len; ++array_len) {
-		if (sf_get_s(stream, array + array_len) < 0)
-			goto out_fail;
-	}
-
-	return 0;
-
-out_fail:
-	while (array_len--)
-		free(array[array_len]);
-	return -stream->status;
-}
-
-int sf_get_ns(struct save_stream *restrict stream, char *restrict dest,
-	      size_t dest_size)
-{
-	u16 len;
-
-	if (sf_get_u16(stream, &len) < 0)
-		return -stream->status;
-
-	if (dest_size < len + 1u) {
-		stream->status = S_ESIZE;
-		return -S_ESIZE;
-	}
-
-	if (sf_read(stream, dest, len) < 0)
-		return -stream->status;
-
-	dest[len] = '\0';
-	return len;
+	return string;
 }

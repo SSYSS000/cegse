@@ -24,6 +24,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdint.h>
 
+#define VSVAL_MAX 4194303u
+
 enum status_code {
 	S_OK = 0,
 	S_EOF,		/* End-of-file */
