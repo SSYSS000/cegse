@@ -23,11 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define CEGSE_SAVE_FILE_H
 
 #include <stdio.h>
-#include <setjmp.h>
-#include "types.h"
-#include "snapshot.h"
 #include "game_save.h"
-#include "save_stream.h"
 
 
 int load_game_save(struct game_save *restrict save, FILE *restrict stream);

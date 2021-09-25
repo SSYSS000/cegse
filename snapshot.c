@@ -21,9 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <assert.h>
 #include <stdlib.h>
-#include "types.h"
 #include "snapshot.h"
-
 
 int get_snapshot_size(const struct snapshot *shot)
 {

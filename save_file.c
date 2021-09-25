@@ -22,12 +22,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <setjmp.h>
 #include <lz4.h>
 #include <stdnoreturn.h>
 #include <stdbool.h>
 #include "defines.h"
 #include "save_file.h"
-#include "snapshot.h"
+#include "save_stream.h"
+#include "types.h"
 
 enum compression_method {
 	COMPRESS_NONE,

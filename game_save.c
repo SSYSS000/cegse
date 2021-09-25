@@ -60,8 +60,7 @@ const struct game *identify_game_save_game(FILE *stream)
 	return NULL;
 }
 
-struct game_save* game_save_new(enum game_title game_title,
-				   int engine_version)
+struct game_save* game_save_new(enum game_title game_title, int engine_version)
 {
 	struct game_save *save = calloc(1, sizeof(*save));
 	if (!save)
