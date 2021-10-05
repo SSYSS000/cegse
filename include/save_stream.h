@@ -25,7 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdio.h>
 #include "types.h"
 
-#include <sys/params.h>
+#include <sys/param.h>
 
 #if defined(BSD)
 #include <sys/endian.h>
