@@ -33,12 +33,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <endian.h>
 #endif
 
-#if defined(__OpenBSD__)
-#define le16toh letoh16
-#define le32toh letoh32
-#define le64toh letoh64
-#endif
-
 /*
  * Write an unsigned 8-bit integer to stream.
  *

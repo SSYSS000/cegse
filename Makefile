@@ -1,4 +1,3 @@
-CC = gcc
 CFLAGS = -Iinclude -Wall -Wextra -g -DDEBUGGING=1
 LIBS = -llz4
 
