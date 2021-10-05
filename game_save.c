@@ -53,7 +53,7 @@ const struct game *identify_game_save_game(FILE *stream)
 		rc = sf_compare(stream, i->magic_bytes, i->magic_size);
 		if (rc == -S_EFILE)
 			return NULL;
-		else if (rc == 0)
+		if (rc == 0)
 			return i;
 	}
 
