@@ -22,9 +22,22 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef CEGSE_SAVE_STREAM_H
 #define CEGSE_SAVE_STREAM_H
 
-#include <endian.h>
 #include <stdio.h>
 #include "types.h"
+
+#include <sys/params.h>
+
+#if defined(BSD)
+#include <sys/endian.h>
+#else
+#include <endian.h>
+#endif
+
+#if defined(__OpenBSD__)
+#define le16toh letoh16
+#define le32toh letoh32
+#define le64toh letoh64
+#endif
 
 /*
  * Write an unsigned 8-bit integer to stream.
