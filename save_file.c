@@ -383,22 +383,11 @@ static void load_file_body(struct save_load *restrict ctx)
 			save_load_fail(ctx, S_EFILE);
 		}
 
-		switch (ctx->compression_method) {
-		case COMPRESS_ZLIB:
-			eprintf("zlib decompression not implemented.\n");
-			exit(1);
-			break;
+		dret = decompress_sf(fileno(ctx->stream), fileno(ctx->compress),
+			csize, dsize, ctx->compression_method);
+		if (dret == -1)
+			save_load_fail(ctx, 0);
 
-		case COMPRESS_LZ4:
-			dret = decompress_lz4(ctx->stream, ctx->compress, csize,
-				dsize);
-			break;
-		}
-
-		if (dret != 0)
-			save_load_fail(ctx, -dret);
-
-		rewind(ctx->compress);
 		ctx->stream = ctx->compress;
 	}
 

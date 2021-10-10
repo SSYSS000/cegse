@@ -20,76 +20,132 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include <stdlib.h>
+#include <errno.h>
+#include <sys/mman.h>
+#include <unistd.h>
 #include <lz4.h>
 #include "compression.h"
 #include "types.h"
+#include "defines.h"
 
-int compress_lz4(FILE *restrict istream, FILE *restrict ostream,
-	unsigned data_sz)
+static int compress(const char *src, char *dest, int src_size, int dest_size,
+	enum compression_method method)
 {
-	int comp_bound = LZ4_compressBound(data_sz);
-	char *output_buffer = malloc(comp_bound);
-	char *input_buffer = malloc(data_sz);
 	int comp_size;
-	int ret;
 
-	if (!output_buffer || !input_buffer) {
-		ret = -S_EMEM;
-		goto out_cleanup;
+	switch (method) {
+	case COMPRESS_NONE:
+		break;
+	case COMPRESS_ZLIB:
+		errno = ENOSYS;
+		perror("cannot zlib compress");
+		return -1;
+	case COMPRESS_LZ4:
+		comp_size = LZ4_compress_default(src, dest, src_size,
+			dest_size);
+		if (comp_size == 0) {
+			eprintf("compression failed");
+			return -1;
+		}
+		break;
 	}
 
-	if (!fread(input_buffer, data_sz, 1u, istream)) {
-		ret = feof(istream) ? -S_EOF : -S_EFILE;
-		goto out_cleanup;
-	}
-
-	comp_size = LZ4_compress_default(input_buffer, output_buffer,
-		data_sz, comp_bound);
-
-	if (!fwrite(output_buffer, comp_size, 1u, ostream)) {
-		ret = -S_EFILE;
-		goto out_cleanup;
-	}
-
-	ret = comp_size;
-
-out_cleanup:
-	free(output_buffer);
-	free(input_buffer);
-	return ret;
+	return comp_size;
 }
 
-int decompress_lz4(FILE *restrict istream, FILE *restrict ostream,
-	unsigned csize, unsigned dsize)
+static int decompress(const char *src, char *dest, int src_size, int dest_size,
+	enum compression_method method)
 {
-	int err = 0;
-	int lz4_ret;
-	char *cbuf = malloc(csize);
-	char *dbuf = malloc(dsize);
-	if (!cbuf || !dbuf) {
-		err = S_EMEM;
-		goto out_cleanup;
+	switch (method) {
+	case COMPRESS_NONE:
+		break;
+	case COMPRESS_ZLIB:
+		errno = ENOSYS;
+		perror("cannot zlib decompress");
+		return -1;
+
+	case COMPRESS_LZ4:
+		if (LZ4_decompress_safe(src, dest, src_size, dest_size) < 0) {
+			eprintf("compress data malformed");
+			return -1;
+		}
+		break;
 	}
 
-	if (!fread(cbuf, csize, 1u, istream)) {
-		err = feof(istream) ? S_EOF : S_EFILE;
-		goto out_cleanup;
-	}
+	return 0;
+}
 
-	lz4_ret = LZ4_decompress_safe(cbuf, dbuf, csize, dsize);
+int compress_sf(int infd, int outfd, unsigned size,
+	enum compression_method method)
+{
+	int comp_bound = LZ4_compressBound(size);
+	char *dest = NULL, *src = NULL;
+	int comp_size = -1;
+	off_t coffset;
 
-	if (lz4_ret < 0) {
-		err = S_EMALFORMED;
-		goto out_cleanup;
-	}
+	if ((coffset = lseek(infd, 0, SEEK_CUR)) == -1)
+		goto out_errno;
+	if (ftruncate(outfd, comp_bound + coffset) != 0)
+		goto out_errno;
+	
+	src = mmap(NULL, size, PROT_READ, MAP_PRIVATE, infd, coffset);
+	if (src == MAP_FAILED)
+		goto out_errno;
 
-	if (!fwrite(dbuf, dsize, 1u, ostream)) {
-		err = S_EFILE;
+	dest = mmap(NULL, comp_bound, PROT_WRITE, MAP_SHARED, outfd, coffset);
+	if (dest == MAP_FAILED)
+		goto out_errno;
+	if ((comp_size = compress(src, dest, size, comp_bound, method)) == -1)
 		goto out_cleanup;
-	}
+	if (msync(dest, comp_size, MS_SYNC) != 0)
+		goto out_errno;
+
+	ftruncate(outfd, comp_size + coffset);
 
 out_cleanup:
-	free(cbuf);
-	free(dbuf);
-	return -err;
+	if (src > (char*)NULL)
+		munmap(src, size);
+	if (dest > (char*)NULL)
+		munmap(dest, comp_bound);
+	return comp_size;
+out_errno:
+	perror("failed to compress savedata");
+	comp_size = -1;
+	goto out_cleanup;
+}
+
+int decompress_sf(int infd, int outfd, unsigned csize, unsigned dsize,
+	enum compression_method method)
+{
+	char *cpa = NULL, *dpa = NULL;
+	off_t coffset;
+	int err = 0;
+
+	if ((coffset = lseek(infd, 0, SEEK_CUR)) == -1)
+		goto out_errno;
+	if (ftruncate(outfd, dsize + coffset) != 0)
+		goto out_errno;
+	
+	cpa = mmap(NULL, csize, PROT_READ, MAP_PRIVATE, infd, coffset);
+	if (cpa == MAP_FAILED)
+		goto out_errno;
+
+	dpa = mmap(NULL, dsize, PROT_WRITE, MAP_SHARED, outfd, coffset);
+	if (dpa == MAP_FAILED)
+		goto out_errno;
+	if ((err = decompress(cpa, dpa, csize, dsize, method)) != 0)
+		goto out_cleanup;
+	if (msync(dpa, dsize, MS_SYNC) != 0)
+		goto out_errno;
+
+out_cleanup:
+	if (cpa > (char*)NULL)
+		munmap(cpa, csize);
+	if (dpa > (char*)NULL)
+		munmap(dpa, dsize);
+	return err ? -1 : 0;
+out_errno:
+	perror("failed to decompress savedata");
+	err = errno;
+	goto out_cleanup;
 }

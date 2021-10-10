@@ -22,8 +22,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef CEGSE_COMPRESSION_H
 #define CEGSE_COMPRESSION_H
 
-#include <stdio.h>
-
 enum compression_method {
 	COMPRESS_NONE,
 	COMPRESS_ZLIB,
@@ -31,27 +29,21 @@ enum compression_method {
 };
 
 /*
- * Compress data_sz bytes from istream to ostream using LZ4 compression.
+ * Compress size bytes from file referenced by infd to file
+ * referenced by outfd using LZ4 compression.
  *
- * Return the number of compressed bytes written to ostream.
- * On file error, return -S_EFILE.
- * On memory allocation error, return -S_EMEM.
- * On unexpected EOF, return -S_EOF.
+ * Return the number of bytes written, or -1 on error.
  */
-int compress_lz4(FILE *restrict istream, FILE *restrict ostream,
-	unsigned data_sz);
+int compress_sf(int infd, int outfd, unsigned size,
+	enum compression_method method);
 
 /*
- * Decompress csize bytes into dsize bytes from istream to ostream
- * using LZ4 compression.
+ * Decompress csize bytes into dsize bytes from file referenced by infd to
+ * file referenced by outfd using LZ4 compression.
  *
- * Return 0 on success.
- * On file error, return -S_EFILE.
- * On memory allocation error, return -S_EMEM.
- * On malformed data error, return -S_EMALFORMED.
- * On unexpected EOF, return -S_EOF.
+ * Return 0 on success, -1 on error.
  */
-int decompress_lz4(FILE *restrict istream, FILE *restrict ostream,
-	unsigned csize, unsigned dsize);
+int decompress_sf(int infd, int outfd, unsigned csize, unsigned dsize,
+	enum compression_method method);
 
 #endif /* CEGSE_COMPRESSION_H */
