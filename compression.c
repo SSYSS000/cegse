@@ -79,19 +79,21 @@ int compress_sf(int infd, int outfd, int size, enum compression_method method)
 {
 	int comp_bound = LZ4_compressBound(size);
 	char *dest = NULL, *src = NULL;
+	off_t in_offset, out_offset;
 	int comp_size = -1;
-	off_t coffset;
 
-	if ((coffset = lseek(infd, 0, SEEK_CUR)) == -1)
+	if ((in_offset = lseek(infd, 0, SEEK_CUR)) == -1)
 		goto out_errno;
-	if (ftruncate(outfd, comp_bound + coffset) != 0)
+	if ((out_offset = lseek(outfd, 0, SEEK_CUR)) == -1)
+		goto out_errno;
+	if (ftruncate(outfd, comp_bound + out_offset) != 0)
 		goto out_errno;
 	
-	src = mmap(NULL, size, PROT_READ, MAP_PRIVATE, infd, coffset);
+	src = mmap(NULL, size, PROT_READ, MAP_PRIVATE, infd, in_offset);
 	if (src == MAP_FAILED)
 		goto out_errno;
 
-	dest = mmap(NULL, comp_bound, PROT_WRITE, MAP_SHARED, outfd, coffset);
+	dest = mmap(NULL, comp_bound, PROT_WRITE, MAP_SHARED, outfd, out_offset);
 	if (dest == MAP_FAILED)
 		goto out_errno;
 	if ((comp_size = compress(src, dest, size, comp_bound, method)) == -1)
@@ -99,7 +101,7 @@ int compress_sf(int infd, int outfd, int size, enum compression_method method)
 	if (msync(dest, comp_size, MS_SYNC) != 0)
 		goto out_errno;
 
-	ftruncate(outfd, comp_size + coffset);
+	ftruncate(outfd, comp_size + out_offset);
 
 out_cleanup:
 	if (src > (char*)NULL)
@@ -117,19 +119,21 @@ int decompress_sf(int infd, int outfd, int csize, int dsize,
 	enum compression_method method)
 {
 	char *cpa = NULL, *dpa = NULL;
-	off_t coffset;
+	off_t in_offset, out_offset;
 	int err = 0;
 
-	if ((coffset = lseek(infd, 0, SEEK_CUR)) == -1)
+	if ((in_offset = lseek(infd, 0, SEEK_CUR)) == -1)
 		goto out_errno;
-	if (ftruncate(outfd, dsize + coffset) != 0)
+	if ((out_offset = lseek(outfd, 0, SEEK_CUR)) == -1)
+		goto out_errno;
+	if (ftruncate(outfd, dsize + out_offset) != 0)
 		goto out_errno;
 	
-	cpa = mmap(NULL, csize, PROT_READ, MAP_PRIVATE, infd, coffset);
+	cpa = mmap(NULL, csize, PROT_READ, MAP_PRIVATE, infd, in_offset);
 	if (cpa == MAP_FAILED)
 		goto out_errno;
 
-	dpa = mmap(NULL, dsize, PROT_WRITE, MAP_SHARED, outfd, coffset);
+	dpa = mmap(NULL, dsize, PROT_WRITE, MAP_SHARED, outfd, out_offset);
 	if (dpa == MAP_FAILED)
 		goto out_errno;
 	if ((err = decompress(cpa, dpa, csize, dsize, method)) != 0)
