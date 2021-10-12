@@ -34,8 +34,7 @@ enum compression_method {
  *
  * Return the number of bytes written, or -1 on error.
  */
-int compress_sf(int infd, int outfd, unsigned size,
-	enum compression_method method);
+int compress_sf(int infd, int outfd, int size, enum compression_method method);
 
 /*
  * Decompress csize bytes into dsize bytes from file referenced by infd to
@@ -43,7 +42,7 @@ int compress_sf(int infd, int outfd, unsigned size,
  *
  * Return 0 on success, -1 on error.
  */
-int decompress_sf(int infd, int outfd, unsigned csize, unsigned dsize,
+int decompress_sf(int infd, int outfd, int csize, int dsize,
 	enum compression_method method);
 
 #endif /* CEGSE_COMPRESSION_H */

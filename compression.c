@@ -75,8 +75,7 @@ static int decompress(const char *src, char *dest, int src_size, int dest_size,
 	return 0;
 }
 
-int compress_sf(int infd, int outfd, unsigned size,
-	enum compression_method method)
+int compress_sf(int infd, int outfd, int size, enum compression_method method)
 {
 	int comp_bound = LZ4_compressBound(size);
 	char *dest = NULL, *src = NULL;
@@ -114,7 +113,7 @@ out_errno:
 	goto out_cleanup;
 }
 
-int decompress_sf(int infd, int outfd, unsigned csize, unsigned dsize,
+int decompress_sf(int infd, int outfd, int csize, int dsize,
 	enum compression_method method)
 {
 	char *cpa = NULL, *dpa = NULL;
