@@ -127,7 +127,7 @@ int sf_compare(FILE *restrict stream, const void *restrict data, size_t num)
 		read_sz = num < sizeof(buf) ? num : sizeof(buf);
 
 		if (!fread(buf, read_sz, 1u, stream))
-			return ferror(stream) ? -S_EFILE : 1;
+			return ferror(stream) ? EOF : 1;
 
 		if (memcmp(data, buf, read_sz) != 0)
 			return 1;

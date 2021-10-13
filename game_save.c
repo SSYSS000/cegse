@@ -51,10 +51,12 @@ const struct game *identify_game_save_game(FILE *stream)
 
 	for (i = supported_games; i != ARRAY_END(supported_games); ++i) {
 		rc = sf_compare(stream, i->magic_bytes, i->magic_size);
-		if (rc == -S_EFILE)
+		if (rc == EOF)
 			return NULL;
 		if (rc == 0)
 			return i;
+
+		rewind(stream);
 	}
 
 	return NULL;

@@ -303,7 +303,7 @@ char *sf_malloc_bstring(FILE *restrict stream);
  * The size of data should not be less than num.
  *
  * If equal, return 0. If unequal or EOF is reached, return 1.
- * On file error, return -S_EFILE.
+ * On file error, return EOF.
  */
 int sf_compare(FILE *restrict stream, const void *restrict data, size_t num);
 
