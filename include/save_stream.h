@@ -290,8 +290,6 @@ int sf_get_bstring(FILE *restrict stream, char *restrict buf, size_t buf_size);
  * the string is allocated using malloc(). The caller is responsible for
  * freeing the string.
  *
- * Callers must use ferror() and feof() to determine error.
- *
  * Return the allocated string or NULL on malloc failure,
  * end of file or file error.
  */
