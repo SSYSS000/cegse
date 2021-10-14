@@ -25,13 +25,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <setjmp.h>
 #include <stdnoreturn.h>
 #include <stdbool.h>
+#include <sys/stat.h>
 #include "defines.h"
 #include "save_file.h"
 #include "save_stream.h"
 #include "compression.h"
 #include "types.h"
 
-struct file_header {
+#define SIGN_SKYRIM	"TESV_SAVEGAME"
+#define SIGN_FALLOUT4	"FO4_SAVEGAME"
+
+struct header {
 	u32 	engine_version;		/* Creation Engine version */
 	u32 	save_num;
 	char 	ply_name[64];		/* Player name */
@@ -48,7 +52,7 @@ struct file_header {
 	u16 	compression_method;
 };
 
-struct file_location_table {
+struct offset_table {
 	u32 form_id_array_count_offset;
 	u32 unknown_table_3_offset;
 	u32 global_data_table_1_offset;
@@ -66,14 +70,48 @@ struct save_load {
 	jmp_buf			*loader_env;
 	FILE 			*compress; /* tmpfile for (de)compression */
 	struct game_save   	*save;
-	struct file_location_table locations;
+	struct offset_table	offsets;
+	struct edition		edition;
 	u8		   	format;
-	u32			engine;
-	enum game_title 	title;
 	enum status_code	status;
 	enum compression_method	compression_method;
 
 };
+
+/*
+ * Return file size of file referenced by fd or -1 on error.
+ */
+static off_t get_file_size(int fd)
+{
+	struct stat s;
+	if (fstat(fd, &s) == -1)
+		return (off_t)-1;
+
+	return s.st_size;
+}
+
+/*
+ * Attempt to identify what game the save file is for.
+ * File position is altered.
+ * Return the game or -1 if unknown or a file error occurred.
+ */
+static enum game which_game(FILE *stream)
+{
+	char buf[16];
+
+	rewind(stream);
+
+	if (!fread(buf, sizeof(buf), 1u, stream))
+		return -1;
+
+	if (!strncmp(SIGN_SKYRIM, buf, sizeof(buf)))
+		return SKYRIM;
+
+	if (!strncmp(SIGN_FALLOUT4, buf, sizeof(buf)))
+		return FALLOUT4;
+
+	return -1;
+}
 
 /*
  * Convert a FILETIME to a time_t. Note that FILETIME is more accurate
@@ -93,40 +131,39 @@ static inline FILETIME time_to_filetime(time_t t)
 }
 
 /*
- * Check if Skyrim Special Edition uses _engine_ version.
+ * Check if edition is Skyrim Special Edition.
  */
-static inline bool is_skse(enum game_title title, unsigned engine)
+static inline bool is_skse(const struct edition *e)
 {
-	return title == SKYRIM && engine == 12u;
+	return e->game == SKYRIM && e->engine == 12u;
 }
 
 /*
- * Check if Skyrim Legendary Edition uses _engine_ version.
+ * Check if edition is Skyrim Legendary Edition.
  */
-static inline bool is_skle(enum game_title title, unsigned engine)
+static inline bool is_skle(const struct edition *e)
 {
-	return title == SKYRIM && 7u <= engine && engine <= 9u;
+	return e->game == SKYRIM && 7u <= e->engine && e->engine <= 9u;
 }
 
 /*
  * Check if a save file is expected to be compressed.
  */
-static inline bool uses_compression(enum game_title title, unsigned engine)
+static inline bool uses_compression(const struct edition *e)
 {
-	return is_skse(title, engine);
+	return is_skse(e);
 }
 
-static inline
-bool has_light_plugins(enum game_title title, unsigned engine, unsigned format)
+static inline bool has_light_plugins(const struct edition *e, unsigned format)
 {
-	return is_skse(title, engine) && format >= 78u;
+	return is_skse(e) && format >= 78u;
 }
 
 /*
  * Find out what type of snapshot pixel format the engine uses
  * and return it.
  */
-enum pixel_format determine_snapshot_format(unsigned engine)
+static enum pixel_format which_snapshot_format(unsigned engine)
 {
 	if (engine >= 11u)
 		return PXFMT_RGBA;
@@ -159,11 +196,11 @@ static inline void save_load_check_stream(struct save_load *ctx)
 /*
  * Builds a serializable file header of a game save.
  */
-static void compose_file_header(struct file_header *restrict header,
-				const struct game_save *restrict save)
+static void compose_file_header(struct header *restrict header,
+	const struct game_save *restrict save)
 {
 	memset(header, 0, sizeof(*header));
-	header->engine_version = save->engine_version;
+	header->engine_version = save->edition.engine;
 	header->save_num = save->save_num;
 	/* TODO: Copy player info here */
 	header->filetime = time_to_filetime(save->time_saved);
@@ -183,7 +220,7 @@ static void compose_file_header(struct file_header *restrict header,
  * Return nonnegative integer on success or EOF on error.
  */
 static int write_file_header(FILE *restrict stream,
-	const struct file_header *restrict header, enum game_title title)
+	const struct header *restrict header, const struct edition *edition)
 {
 	sf_put_u32(stream, header->engine_version);
 	sf_put_u32(stream, header->save_num);
@@ -199,7 +236,7 @@ static int write_file_header(FILE *restrict stream,
 	sf_put_u32(stream, header->snapshot_width);
 	sf_put_u32(stream, header->snapshot_height);
 
-	if (uses_compression(title, header->engine_version))
+	if (uses_compression(edition))
 		sf_put_u16(stream, header->compression_method);
 
 	return ferror(stream) ? EOF : 0;
@@ -211,7 +248,7 @@ static int write_file_header(FILE *restrict stream,
  * Return a nonnegative integer on success or EOF on end of file or error.
  */
 static int read_file_header(FILE *restrict stream,
-	struct file_header *header, enum game_title title)
+	struct header *header, const struct edition *edition)
 {
 	DPRINT("reading file header at 0x%lx\n", ftell(stream));
 	sf_get_u32(stream, &header->engine_version);
@@ -231,7 +268,7 @@ static int read_file_header(FILE *restrict stream,
 	if (ferror(stream) || feof(stream))
 		return EOF;
 
-	if (uses_compression(title, header->engine_version))
+	if (uses_compression(edition))
 		sf_get_u16(stream, &header->compression_method);
 
 	return (ferror(stream) || feof(stream)) ? EOF : 0;
@@ -242,8 +279,8 @@ static int read_file_header(FILE *restrict stream,
  *
  * Return a nonnegative integer on success or EOF on end of file or error.
  */
-static int read_file_location_table(FILE *restrict stream,
-	struct file_location_table *restrict table)
+static int read_offset_table(FILE *restrict stream,
+	struct offset_table *restrict table)
 {
 	DPRINT("reading file location table at 0x%lx\n", ftell(stream));
 	sf_get_u32(stream, &table->form_id_array_count_offset);
@@ -361,7 +398,7 @@ static void load_save_data(struct save_load *restrict ctx)
 	if (has_light_plugins(ctx->title, ctx->engine, ctx->format))
 		load_light_plugins(ctx);
 
-	read_file_location_table(ctx->stream, &ctx->locations);
+	read_offset_table(ctx->stream, &ctx->locations);
 
 	/* TODO: Read the rest. */
 
@@ -399,7 +436,7 @@ static void load_snapshot(struct save_load *restrict ctx, int width, int height)
 	enum pixel_format px_format;
 	int shot_sz;
 
-	px_format = determine_snapshot_format(ctx->engine);
+	px_format = which_snapshot_format(ctx->edition.engine);
 	ctx->save->snapshot = snapshot_new(px_format, width, height);
 	if (!ctx->save->snapshot)
 		save_load_fail(ctx, S_EMEM);
@@ -411,7 +448,7 @@ static void load_snapshot(struct save_load *restrict ctx, int width, int height)
 
 static void load_file(struct save_load *restrict ctx)
 {
-	struct file_header header;
+	struct header header;
 	u32 header_sz;
 
 	sf_get_u32(ctx->stream, &header_sz);

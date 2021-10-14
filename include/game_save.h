@@ -26,20 +26,18 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "types.h"
 #include "snapshot.h"
 
-enum game_title {
+enum game {
 	SKYRIM,
 	FALLOUT4
 };
 
-struct game {
-	enum game_title title;
-	const unsigned char *magic_bytes;
-	int magic_size;
+struct edition {
+	enum game game;
+	unsigned engine;
 };
 
 struct game_save {
-	enum game_title game_title;
-	int engine_version;
+	struct edition edition;
 	int save_num;
 	u8 file_format;
 
@@ -62,16 +60,6 @@ struct game_save {
 };
 
 /*
- * Attempts to identify the game of a game save file by reading magic bytes.
- *
- * Note that on success, the file position indicator is at the end
- * of the magic bytes.
- * If the game cannot be identified or a file error occurred, return NULL.
- * Otherwise, return a pointer to the game.
- */
-const struct game *identify_game_save_game(FILE *stream);
-
-/*
  * Create a game save.
  *
  * engine_version specifies the Creation Engine version
@@ -80,7 +68,7 @@ const struct game *identify_game_save_game(FILE *stream);
  * Return a pointer to an initialized game save or
  * return NULL if memory allocation fails.
  */
-struct game_save* game_save_new(enum game_title game_title, int engine_version);
+struct game_save* game_save_new(enum game game_title, int engine_version);
 
 /*
  * Destroy a game save, freeing its held resources.

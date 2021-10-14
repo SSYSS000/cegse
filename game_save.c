@@ -27,41 +27,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "defines.h"
 #include "game_save.h"
 
-static const unsigned char tesv_magic[] = {
-	'T','E','S','V','_','S','A','V','E','G','A','M','E'};
-
-static const unsigned char fo4_magic[] = {
-	'F','O','4','_','S','A','V','E','G','A','M','E'};
-
-
-#define INIT_GAME(title, magic) \
-	{ title, magic, sizeof(magic) }
-
-static const struct game supported_games[] = {
-	INIT_GAME(FALLOUT4, fo4_magic),
-	INIT_GAME(SKYRIM, tesv_magic),
-};
-
-#undef INIT_GAME
-
-const struct game *identify_game_save_game(FILE *stream)
-{
-	int rc;
-	const struct game *i;
-
-	for (i = supported_games; i != ARRAY_END(supported_games); ++i) {
-		rc = sf_compare(stream, i->magic_bytes, i->magic_size);
-		if (rc == EOF)
-			return NULL;
-		if (rc == 0)
-			return i;
-
-		rewind(stream);
-	}
-
-	return NULL;
-}
-
 struct game_save* game_save_new(enum game_title game_title, int engine_version)
 {
 	struct game_save *save = calloc(1, sizeof(*save));
