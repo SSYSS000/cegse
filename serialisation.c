@@ -68,7 +68,7 @@ void serialise_vsval(u32 value, struct serialiser *s)
 	serialiser_add(hibytes + 1, s);
 }
 
-void serialise_bstr(const char *restrict str, struct serialiser *s)
+void serialise_bstr(const char *str, struct serialiser *s)
 {
 	u16 len = strlen(str);
 	serialise_u16(len, s->buf);

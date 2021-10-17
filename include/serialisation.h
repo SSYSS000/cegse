@@ -95,6 +95,8 @@ static inline void serialise_filetime(FILETIME value, struct serialiser *s)
 	return serialise_u64(value, s);
 }
 
+void serialise_bstr(const char *str, struct serialiser *s);
+
 int parse_u8(u8 *value, struct parser *p);
 int parse_u16(u16 *value, struct parser *p);
 int parse_u32(u32 *value, struct parser *p);
