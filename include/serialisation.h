@@ -22,141 +22,96 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef CEGSE_SERIALISATION_H
 #define CEGSE_SERIALISATION_H
 
-#include <sys/stat.h>
 #include "types.h"
 
-#ifdef BSD
-#include <sys/endian.h>
-#else
-#include <endian.h>
-#endif
+#define  serialise_i8(v, s) serialise_u8((u8)(v), s)
+#define serialise_i16(v, s) serialise_u16((u16)(v), s)
+#define serialise_i32(v, s) serialise_u32((u32)(v), s)
+#define serialise_i64(v, s) serialise_u64((u64)(v), s)
 
-#define  serialise_i8(v, buf) serialise_u8((u8)(v), buf)
-#define serialise_i16(v, buf) serialise_u16((u16)(v), buf)
-#define serialise_i32(v, buf) serialise_u32((u32)(v), buf)
-#define serialise_i64(v, buf) serialise_u64((u64)(v), buf)
+#define  parse_i8(v, p) parse_u8((u8 *)(v), p)
+#define parse_i16(v, p) parse_u16((u16 *)(v), p)
+#define parse_i32(v, p) parse_u32((u32 *)(v), p)
+#define parse_i64(v, p) parse_u64((u64 *)(v), p)
 
-#define  parse_i8(v, buf, buf_sz) parse_u8((u8 *)(v), buf, buf_sz)
-#define parse_i16(v, buf, buf_sz) parse_u16((u16 *)(v), buf, buf_sz)
-#define parse_i32(v, buf, buf_sz) parse_u32((u32 *)(v), buf, buf_sz)
-#define parse_i64(v, buf, buf_sz) parse_u64((u64 *)(v), buf, buf_sz)
-
-#define PARSE_SIZE_VALUE(sz_addr, buf, buf_sz) (_Generic((sz_addr)		\
-	u8 *: parse_u8(sz_addr, buf, buf_sz),					\
-	u16 *: parse_u16(sz_addr, buf, buf_sz),					\
-	u32 *: parse_u32(sz_addr, buf, buf_sz),					\
-	u64 *: parse_u64(sz_addr, buf, buf_sz)					\
+#define PARSE_SIZE_VALUE(sz_addr, par) (_Generic((sz_addr)			\
+	u8 *: parse_u8(sz_addr,   par),						\
+	u16 *: parse_u16(sz_addr, par),						\
+	u32 *: parse_u32(sz_addr, par),						\
+	u64 *: parse_u64(sz_addr, par)						\
 ))
 
-#define NEXT_OBJECT(size_addr, obj_addr, buf, buf_sz) do {			\
-	(obj_addr) = PARSE_SIZE_VALUE(size_addr, buf, buf_sz);			\
-	if ((obj_addr) && *(size_addr) > ((buf_sz) - ((obj_addr) - (buf))))	\
+#define NEXT_OBJECT(obj_sz, obj_addr, par) do {					\
+	if (PARSE_SIZE_VALUE(&(obj_sz), par) != -1 &&				\
+	    (obj_sz) > (par)->buf_sz)						\
+		obj_addr = (par)->buf;						\
+	else									\
 		obj_addr = NULL;						\
 } while (0)
 
-static inline int serialise_u8(u8 value, u8 *buf)
+struct serialiser {
+	/*
+	 * buf points to one byte past the end of the last serialised item.
+	 * Set to NULL to find the required minimum buf size of
+	 * serialisation. Refer to n_written for the size.
+	 */
+	void *buf;
+	size_t n_written;
+};
+
+struct parser {
+	const void *buf;	/* Data being parsed */
+	size_t buf_sz;		/* Size of buf */
+};
+
+static inline void serialiser_add(size_t n, struct serialiser *s)
 {
-	if (buf)
-		*buf = value;
-	return sizeof(value);
+	if (s->buf)
+		s->buf = (char *)s->buf + n;
+	s->n_written += n;
 }
 
-static inline const u8 *parse_u8(u8 *value, const u8 *buf, size_t buf_sz)
+static inline void parser_remove(size_t n, struct parser *p)
 {
-	if (buf_sz < sizeof(*value))
-		return NULL;
-
-	*value = *buf;
-	return buf + sizeof(*value);
+	p->buf = (const char *)p->buf + n;
+	p->buf_sz -= n;
 }
 
-static inline int serialise_u16(u16 value, u8 *buf)
-{
-	value = htole16(value);
-	if (buf)
-		*((u16 *)buf) = value;
-	return sizeof(value);
-}
-
-static inline const u8 *parse_u16(u16 *value, const u8 *buf, size_t buf_sz)
-{
-	if (buf_sz < sizeof(*value))
-		return NULL;
-
-	*value = le16toh(*((u16 *)buf));
-	return buf + sizeof(*value);
-}
-
-static inline int serialise_u32(u32 value, u8 *buf)
-{
-	value = htole32(value);
-	if (buf)
-		*((u32 *)buf) = value;
-	return sizeof(value);
-}
-
-static inline const u8 *parse_u32(u32 *value, const u8 *buf, size_t buf_sz)
-{
-	if (buf_sz < sizeof(*value))
-		return NULL;
-
-	*value = le32toh(*((u32 *)buf));
-	return buf + sizeof(*value);
-}
-
-static inline int serialise_u64(u64 value, u8 *buf)
-{
-	value = htole64(value);
-	if (buf)
-		*((u64 *)buf) = value;
-	return sizeof(value);
-}
-
-static inline const u8 *parse_u64(u64 *value, const u8 *buf, size_t buf_sz)
-{
-	if (buf_sz < sizeof(*value))
-		return NULL;
-
-	*value = le64toh(*((u64 *)buf));
-	return buf + sizeof(*value);
-}
-
-static inline int serialise_f32(f32 value, u8 *buf)
-{
-	if (buf)
-		*((f32 *)buf) = value;
-	return sizeof(value);
-}
-
-static inline const u8 *parse_f32(f32 *value, const u8 *buf, size_t buf_sz)
-{
-	if (buf_sz < sizeof(*value))
-		return NULL;
-
-	*value = *((f32 *)buf);
-	return buf + sizeof(*value);
-}
-
-static inline int serialise_filetime(FILETIME value, u8 *buf)
-{
-	return serialise_u64(value, buf);
-}
-
-static inline const u8 *
-parse_filetime(FILETIME *value, const u8 *buf, size_t buf_sz)
-{
-	return parse_u64(value, buf, buf_sz);
-}
+void serialise_u8(u8 value, struct serialiser *s);
+void serialise_u16(u16 value, struct serialiser *s);
+void serialise_u32(u32 value, struct serialiser *s);
+void serialise_u64(u64 value, struct serialiser *s);
+void serialise_f32(f32 value, struct serialiser *s);
 
 /*
  * Write a variable-size value to stream.
  * NOTE: Values greater than VSVAL_MAX are wrapped.
  */
-int serialise_vsval(u32 value, u8 *buf);
+void serialise_vsval(u32 value, struct serialiser *s);
+
+
+static inline void serialise_filetime(FILETIME value, struct serialiser *s)
+{
+	return serialise_u64(value, s);
+}
+
+int parse_u8(u8 *value, struct parser *p);
+int parse_u16(u16 *value, struct parser *p);
+int parse_u32(u32 *value, struct parser *p);
+int parse_u64(u64 *value, struct parser *p);
+int parse_f32(f32 *value, struct parser *p);
+
+static inline int parse_filetime(FILETIME *value, struct parser *p)
+{
+	return parse_u64(value, p);
+}
 
 /*
  * Read a variable-size value from buf.
  */
-const u8 *parse_vsval(u32 *value, const u8 *buf, size_t buf_sz);
+int parse_vsval(u32 *value, struct parser *p);
+
+int parse_bstr(char *dest, size_t n, struct parser *p);
+int parse_bstr_m(char **string, struct parser *p);
 
 #endif /* CEGSE_SERIALISATION_H */
