@@ -22,7 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef CEGSE_COMPRESSION_H
 #define CEGSE_COMPRESSION_H
 
-enum compression_method {
+enum compressor {
 	COMPRESS_NONE,
 	COMPRESS_ZLIB,
 	COMPRESS_LZ4,
@@ -34,7 +34,7 @@ enum compression_method {
  *
  * Return the number of bytes written, or -1 on error.
  */
-int compress_sf(int infd, int outfd, int size, enum compression_method method);
+int compress_sf(int infd, int outfd, int size, enum compressor method);
 
 /*
  * Decompress csize bytes into dsize bytes from file referenced by infd to
@@ -43,6 +43,6 @@ int compress_sf(int infd, int outfd, int size, enum compression_method method);
  * Return 0 on success, -1 on error.
  */
 int decompress_sf(int infd, int outfd, int csize, int dsize,
-	enum compression_method method);
+	enum compressor method);
 
 #endif /* CEGSE_COMPRESSION_H */

@@ -26,14 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define VSVAL_MAX 4194303u
 
-enum status_code {
-	S_OK = 0,
-	S_EOF,		/* End-of-file */
-	S_EFILE,	/* File error */
-	S_EMEM,		/* Memory allocation error */
-	S_ESIZE, 	/* Size error; buffer too small or size mismatch */
-	S_EMALFORMED	/* Data malformed */
-};
+#define PLAYER_NAME_MAX_LEN 104
 
 typedef int8_t i8;
 typedef int16_t i16;

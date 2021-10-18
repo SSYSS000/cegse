@@ -28,7 +28,7 @@ struct snapshot {
 	int width;
 	int height;
 	enum pixel_format pixel_format;
-	unsigned char *data;
+	unsigned char data[];
 };
 
 /*

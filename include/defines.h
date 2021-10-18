@@ -24,36 +24,36 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdio.h>
 
-#define eprintf(...) fprintf(stderr, __VA_ARGS__)
+#define eprintf(...) 	fprintf(stderr, __VA_ARGS__)
 
-#define ARRAY_SIZE(a) (sizeof((a)) / sizeof(*(a)))
+#define ARRAY_SIZE(a) 	(sizeof((a)) / sizeof(*(a)))
+#define ARRAY_END(a) 	((a) + ARRAY_SIZE(a))
 
-#define ARRAY_END(a) ((a) + ARRAY_SIZE(a))
+#define MIN(a, b)	((a) < (b) ? (a) : (b))
 
-#if DEBUGGING
+#if defined(DEBUGGING) && DEBUGGING
 
-#define DPRINT(...) do {				\
-		eprintf("debug:%s: ", __func__);	\
-		eprintf(__VA_ARGS__);			\
-	} while (0)
+#define DPRINT(...) do {							\
+	eprintf("debug:%s: ", __func__);					\
+	eprintf(__VA_ARGS__);							\
+} while (0)
 
-#define DWARN(...) do {					\
-		eprintf("dwarn:%s: ", __func__);	\
-		eprintf(__VA_ARGS__);			\
-	} while (0)
+#define DWARN(...) do {								\
+	eprintf("dwarn:%s: ", __func__);					\
+	eprintf(__VA_ARGS__);							\
+} while (0)
 
-#define DWARNC(cond, ...) do {				\
-	if (cond)					\
-		DWARN(__VA_ARGS__);			\
-	} while (0)
+#define DWARN_IF(cond, ...) do {						\
+	if (cond)								\
+		DWARN(__VA_ARGS__);						\
+} while (0)
 
 
 #else
 
 #define DPRINT(...)
 #define DWARN(...)
-#define DWARNC(...)
+#define DWARN_IF(...)
 
-#endif
-
-#endif // CEGSE_DEFINES_H
+#endif /* DEBUGGING */
+#endif /* CEGSE_DEFINES_H */
