@@ -31,15 +31,12 @@ enum game {
 	FALLOUT4
 };
 
-struct edition {
-	enum game game;
-	unsigned engine;
-};
-
 struct game_save {
-	struct edition edition;
-	int save_num;
+	enum game game;
+	u32 engine;
 	u8 file_format;
+
+	int save_num;
 
 	time_t time_saved;
 
@@ -68,7 +65,7 @@ struct game_save {
  * Return a pointer to an initialized game save or
  * return NULL if memory allocation fails.
  */
-struct game_save* game_save_new(enum game game_title, int engine_version);
+struct game_save* game_save_new(enum game game, u32 engine);
 
 /*
  * Destroy a game save, freeing its held resources.

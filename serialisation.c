@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <sys/stat.h>
 #include "serialisation.h"
+#include "game_save.h"
 #include "snapshot.h"
 #include "defines.h"
 
@@ -109,10 +110,10 @@ struct parser {
 static const char *get_magic_bytes(const struct serialise_format *f)
 {
 	switch (f->game) {
-		case SKYRIM:
-			return "SKYRIM";
-		case FALLOUT4:
-			return "FO4_SAVEGAME";
+	case SKYRIM:
+		return "SKYRIM";
+	case FALLOUT4:
+		return "FO4_SAVEGAME";
 	}
 	return NULL;
 }
