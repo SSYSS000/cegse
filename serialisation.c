@@ -550,7 +550,7 @@ static int parse_plugins(char ***array, u8 *array_len, struct parser *p)
 	return 0;
 }
 
-static int parse_light_plugins(char ***array, u8 *array_len, struct parser *p)
+static int parse_light_plugins(char ***array, u16 *array_len, struct parser *p)
 {
 	char **plugins;
 	u16 count;
