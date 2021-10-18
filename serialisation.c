@@ -21,26 +21,10 @@
 #define serialise_i32(v, s)	serialise_u32((u32)(v), s)
 #define serialise_i64(v, s) 	serialise_u64((u64)(v), s)
 
-#define parse_i8(v, p)		parse_u8((u8 *)(v), p)
-#define parse_i16(v, p)		parse_u16((u16 *)(v), p)
+#define parse_i8(v, p)		parse_u8((u32 *)(v), p)
+#define parse_i16(v, p)		parse_u16((u32 *)(v), p)
 #define parse_i32(v, p)		parse_u32((u32 *)(v), p)
 #define parse_i64(v, p)		parse_u64((u64 *)(v), p)
-
-#define PARSE_SIZE_VALUE(sz_addr, par) (_Generic((sz_addr)			\
-	u8 *: parse_u8(sz_addr,   par),						\
-	u16 *: parse_u16(sz_addr, par),						\
-	u32 *: parse_u32(sz_addr, par),						\
-	u64 *: parse_u64(sz_addr, par)						\
-))
-
-#define NEXT_OBJECT(obj_sz, obj_addr, par) do {					\
-	if (PARSE_SIZE_VALUE(&(obj_sz), par) != -1 &&				\
-	    (obj_sz) > (par)->buf_sz)						\
-		obj_addr = (par)->buf;						\
-	else									\
-		obj_addr = NULL;						\
-} while (0)
-
 
 struct header {
 	/* Creation Engine version */
@@ -52,13 +36,13 @@ struct header {
 	/* Playtime or in-game date */
 	char 	game_time[48];
 	char 	race_id[48];
-	u16 	sex;
+	u32 	sex;
 	f32 	current_xp;
 	f32 	target_xp;
 	FILETIME filetime;
 	u32 	snapshot_width;
 	u32 	snapshot_height;
-	u16 	compressor;
+	u32 	compressor;
 };
 
 struct offset_table {
@@ -77,7 +61,7 @@ struct offset_table {
 struct serialise_format {
 	enum game game;
 	u32 engine;
-	u8 revision;
+	u32 revision;
 };
 
 struct serialiser {
@@ -183,19 +167,19 @@ static inline void serialiser_add(size_t n, struct serialiser *s)
 	s->n_written += n;
 }
 
-static void serialise_u8(u8 value, struct serialiser *s)
+static void serialise_u8(u32 value, struct serialiser *s)
 {
 	if (s->buf)
 		*(u8 *)s->buf = value;
-	serialiser_add(sizeof(value), s);
+	serialiser_add(sizeof(u8), s);
 }
 
-static void serialise_u16(u16 value, struct serialiser *s)
+static void serialise_u16(u32 value, struct serialiser *s)
 {
-	value = htole16(value);
+	u16 swapped = htole16(value);
 	if (s->buf)
-		*(u16 *)s->buf = value;
-	serialiser_add(sizeof(value), s);
+		*(u16 *)s->buf = swapped;
+	serialiser_add(sizeof(swapped), s);
 }
 
 static void serialise_u32(u32 value, struct serialiser *s)
@@ -367,19 +351,19 @@ static inline void parser_remove(size_t n, struct parser *p)
 	p->buf_sz -= n;
 }
 
-static int parse_u8(u8 *value, struct parser *p)
+static int parse_u8(u32 *value, struct parser *p)
 {
-	RETURN_EOD_IF_SHORT(sizeof(*value), p);
+	RETURN_EOD_IF_SHORT(sizeof(u8), p);
 	*value = *(const u8 *)p->buf;
-	parser_remove(sizeof(*value), p);
+	parser_remove(sizeof(u8), p);
 	return 0;
 }
 
-static int parse_u16(u16 *value, struct parser *p)
+static int parse_u16(u32 *value, struct parser *p)
 {
-	RETURN_EOD_IF_SHORT(sizeof(*value), p);
+	RETURN_EOD_IF_SHORT(sizeof(u16), p);
 	*value = le16toh(*(u16 *)p->buf);
-	parser_remove(sizeof(*value), p);
+	parser_remove(sizeof(u16), p);
 	return 0;
 }
 
@@ -432,7 +416,7 @@ static int parse_vsval(u32 *value, struct parser *p)
 
 static int parse_bstr(char *dest, size_t n, struct parser *p)
 {
-	u16 bs_len, copy_len;
+	u32 bs_len, copy_len;
 
 	if (parse_u16(&bs_len, p) == -1)
 		return -1;
@@ -452,7 +436,7 @@ static int parse_bstr(char *dest, size_t n, struct parser *p)
 
 static int parse_bstr_m(char **string, struct parser *p)
 {
-	u16 len;
+	u32 len;
 
 	if (parse_u16(&len, p) == -1)
 		return -1;
@@ -486,7 +470,7 @@ static static int parse_header(struct header *header, struct parser *p)
 	parse_u32(&header->snapshot_height, p);
 	if (p->eod)
 		return -1;
-	p->format->engine = header->engine;
+	p->format.engine = header->engine;
 	if (can_use_compressor(&p->format))
 		parse_u16(&header->compressor, p);
 	return p->eod ? -1 : 0;
@@ -511,64 +495,33 @@ static int parse_offset_table(struct offset_table *table, struct parser *p)
 	return p->eod ? -1 : 0;
 }
 
-static int parse_bstr_array(char **array, unsigned array_len, struct parser *p)
+/*
+ * Parse a bstring array, prefixed by its length.
+ * The length is parsed using parse_count callback function.
+ * The array memory is allocated using malloc().
+ */
+static int parse_bstr_array(char ***array, u32 *array_len,
+	int (*parse_count)(u32 *, struct parser *), struct parser *p)
 {
-	unsigned i;
+	char **bstrings;
+	u32 count, i;
 
-	for (i = 0u; i < array_len; ++i) {
-		if (parse_bstr_m(array + i, p) == -1) {
+	if (parse_count(&count, p) == -1)
+		return -1;
+
+	bstrings = malloc(count * sizeof(*bstrings));
+	if (!bstrings)
+		return -1;
+
+	for (i = 0u; i < count; ++i) {
+		if (parse_bstr_m(bstrings + i, p) == -1) {
 			while (i)
-				free(array[--i]);
+				free(bstrings[--i]);
+			free(bstrings);
 			return -1;
 		}
 	}
-	return 0;
-}
-
-static int parse_plugins(char ***array, u8 *array_len, struct parser *p)
-{
-	char **plugins;
-	u32 block_len;
-	u8 count;
-
-	parse_u32(&block_len, p);
-	parse_u8(&count, p);
-
-	if (p->eod)
-		return -1;
-
-	plugins = malloc(count * sizeof(*plugins));
-	if (!plugins)
-		return -1;
-
-	if (parse_bstr_array(plugins, count, p) == -1) {
-		free(plugins);
-		return -1;
-	}
-
-	*array = plugins;
-	*array_len = count;
-	return 0;
-}
-
-static int parse_light_plugins(char ***array, u16 *array_len, struct parser *p)
-{
-	char **plugins;
-	u16 count;
-
-	if (parse_u16(&count, p) == -1)
-		return -1;
-
-	plugins = malloc(count * sizeof(*plugins));
-	if (!plugins)
-		return -1;
-
-	if (parse_bstr_array(plugins, count, p) == -1) {
-		free(plugins);
-		return -1;
-	}
-
-	*array = plugins;
+	*array = bstrings;
 	*array_len = count;
 	return 0;
 }
