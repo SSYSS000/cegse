@@ -38,13 +38,12 @@ struct snapshot {
 unsigned snapshot_size(const struct snapshot *shot);
 
 /*
- * Initialize a snapshot. The caller is responsible for destroying it when
- * no longer needed.
+ * Create a blank snapshot of width w and of height h.
  *
  * On memory allocation error, return NULL. Otherwise, return a pointer
  * to the snapshot.
  */
-struct snapshot *snapshot_new(enum pixel_format format, int width, int height);
+struct snapshot *snapshot_new(enum pixel_format format, unsigned w, unsigned h);
 
 /*
  * Destroy a snapshot, freeing its held resources. No further actions

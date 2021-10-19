@@ -23,14 +23,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdlib.h>
 #include "snapshot.h"
 
-static unsigned calculate_size(enum pixel_format format, int width, int height)
+static unsigned calculate_size(enum pixel_format format, unsigned w, unsigned h)
 {
-	int n_pixels = width * height;
+	unsigned n_pixels = w * h;
 	switch (format) {
 	case PXFMT_RGB:
-		return 3 * n_pixels;
+		return 3u * n_pixels;
 	case PXFMT_RGBA:
-		return 4 * n_pixels;
+		return 4u * n_pixels;
 	}
 
 	assert(!"snapshot contains unknown/unhandled pixel format.");
@@ -41,18 +41,18 @@ unsigned snapshot_size(const struct snapshot *shot)
 	return calculate_size(shot->pixel_format, shot->width, shot->height);
 }
 
-struct snapshot *snapshot_new(enum pixel_format format, int width, int height)
+struct snapshot *snapshot_new(enum pixel_format format, unsigned w, unsigned h)
 {
 	struct snapshot *shot;
 	unsigned shot_sz;
 
-	shot_sz = calculate_size(format, width, height);
+	shot_sz = calculate_size(format, w, h);
 	shot = malloc(sizeof(*shot) + shot_sz);
 	if (!shot)
 		return NULL;
 	shot->pixel_format = format;
-	shot->width = width;
-	shot->height = height;
+	shot->width = w;
+	shot->height = h;
 	return shot;
 }
 
