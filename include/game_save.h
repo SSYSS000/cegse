@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <time.h>
 #include "types.h"
 #include "snapshot.h"
+#include "global_data.h"
 
 enum game {
 	SKYRIM,
@@ -54,6 +55,9 @@ struct game_save {
 
 	u32 num_light_plugins;
 	char **light_plugins;
+
+	u32 num_globals;
+	struct global_data *globals;
 };
 
 /*

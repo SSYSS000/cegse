@@ -52,5 +52,10 @@ void game_save_free(struct game_save *save)
 	for (i = 0u; i < save->num_light_plugins; ++i)
 		free(save->light_plugins[i]);
 	free(save->light_plugins);
+
+	for (i = 0u; i < save->num_globals; ++i)
+		global_data_free(save->globals + i);
+	free(save->globals);
+
 	free(save);
 }

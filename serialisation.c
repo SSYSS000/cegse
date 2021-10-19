@@ -102,7 +102,7 @@ static inline bool can_use_compressor(const struct serialise_format *f)
 
 static inline bool has_light_plugins(const struct serialise_format *f)
 {
-	return is_skse(f) && f->revision >= 78u;
+	return f->game == FALLOUT4 || (is_skse(f) && f->revision >= 78u);
 }
 
 /*
@@ -542,16 +542,48 @@ static int parse_snapshot(struct snapshot **snapshot, struct parser *p)
 	return 0;
 }
 
+static int parse_raw_global(struct raw_global *raw, u32 len, struct parser *p)
+{
+	raw->data = malloc(len);
+	if (!raw->data)
+		return -1;
+	memcpy(raw->data, p->buf, len);
+	parser_remove(len, p);
+	raw->data_sz = len;
+	return 0;
+}
+
+static int parse_global_data(struct global_data *out, struct parser *p)
+{
+	u32 type;
+	u32 len;
+	int rc;
+
+	parse_u32(&type, p);
+	parse_u32(&len, p);
+	if (p->eod)
+		return -1;
+
+	RETURN_EOD_IF_SHORT(len, p);
+	out->type = type;
+	switch (type) {
+	default:
+		rc = parse_raw_global(&out->value.raw, len, p);
+	}
+
+	return rc;
+}
+
 static int handle_decompression(enum compressor method, struct parser *p)
 {
-	u32 compressed_len;
 	u32 uncompressed_len;
+	u32 compressed_len;
 
 	if (!can_use_compressor(&p->format))
 		return 0;
 
-	parse_u32(&compressed_len, p);
 	parse_u32(&uncompressed_len, p);
+	parse_u32(&compressed_len, p);
 	if (p->eod)
 		return -1;
 
@@ -573,7 +605,7 @@ static int parse_save_data(void *data, size_t data_sz, struct game_save **out)
 	struct parser p = {data, data_sz};
 	struct game_save *save = NULL;
 	struct header header;
-	u32 bs;
+	u32 bs, i, num_globals_total;
 
 	if (parse_signature(&p) == (enum game)-1) {
 		eprintf("parser: not a Creation Engine save file\n");
@@ -587,6 +619,7 @@ static int parse_save_data(void *data, size_t data_sz, struct game_save **out)
 		eprintf("parser: cannot allocate memory\n");
 		return -1;
 	}
+	save->time_saved = filetime_to_time(header.filetime);
 
 	if (parse_snapshot(&save->snapshot, &p) == -1)
 		goto out_error;
@@ -595,6 +628,7 @@ static int parse_save_data(void *data, size_t data_sz, struct game_save **out)
 	}
 	if (parse_u8(&p.format.revision, &p) == -1)
 		goto out_error;
+	save->file_format = p.format.revision;
 	if (p.format.game == FALLOUT4)
 		parse_bstr(save->game_version, sizeof(save->game_version), &p);
 
@@ -607,6 +641,21 @@ static int parse_save_data(void *data, size_t data_sz, struct game_save **out)
 
 	if (parse_offset_table(&p.offsets, &p) == -1)
 		goto out_error;
+
+	num_globals_total = p.offsets.num_globals1 + p.offsets.num_globals2 +
+		p.offsets.num_globals3;
+	save->globals = malloc(num_globals_total * sizeof(*save->globals));
+	if (!save->globals) {
+		eprintf("parser: cannot allocate memory\n");
+		goto out_error;
+	}
+
+	for (i = 0u; i < p.offsets.num_globals1 + p.offsets.num_globals2; ++i) {
+		if (parse_global_data(save->globals + save->num_globals, &p) == -1) {
+			goto out_error;
+		}
+		save->num_globals++;
+	}
 
 	*out = save;
 	free(p.mem);
