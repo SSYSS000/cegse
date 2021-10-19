@@ -4,6 +4,7 @@ LIBS = -llz4
 OBJS = 	snapshot.o \
 	game_save.o \
 	compression.o \
+	global_data.o \
 	serialisation.o \
 
 TARGET = cegse
