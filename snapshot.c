@@ -44,7 +44,7 @@ unsigned snapshot_size(const struct snapshot *shot)
 struct snapshot *snapshot_new(enum pixel_format format, int width, int height)
 {
 	struct snapshot *shot;
-	int shot_sz;
+	unsigned shot_sz;
 
 	shot_sz = calculate_size(format, width, height);
 	shot = malloc(sizeof(*shot) + shot_sz);
