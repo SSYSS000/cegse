@@ -59,10 +59,12 @@ struct serialiser {
 struct parser {
 	const void *buf;	/* Data being parsed */
 	size_t buf_sz;		/* Size of buf */
+	void *mem;		/* Memory mallocated during parsing */
 	struct serialise_format format;
 	struct offset_table offsets;
 
-	int snapshot_width, snapshot_height;
+	unsigned snapshot_width;
+	unsigned snapshot_height;
 
 	/*
 	 * End of data condition.
@@ -465,6 +467,8 @@ static int parse_header(struct header *header, struct parser *p)
 	parse_u32(&header->snapshot_height, p);
 	if (p->eod)
 		return -1;
+	p->snapshot_width = header->snapshot_width;
+	p->snapshot_height = header->snapshot_height;
 	p->format.engine = header->engine;
 	if (can_use_compressor(&p->format))
 		parse_u16(&header->compressor, p);
@@ -538,7 +542,7 @@ static int parse_snapshot(struct snapshot **snapshot, struct parser *p)
 	return 0;
 }
 
-static int handle_decompression(void **tmp_buf, struct parser *p)
+static int handle_decompression(enum compressor method, struct parser *p)
 {
 	u32 compressed_len;
 	u32 uncompressed_len;
@@ -551,45 +555,46 @@ static int handle_decompression(void **tmp_buf, struct parser *p)
 	if (p->eod)
 		return -1;
 
+	RETURN_EOD_IF_SHORT(compressed_len, p);
+	p->mem = malloc(uncompressed_len);
 
+	if (decompress(p->buf, p->mem, compressed_len, uncompressed_len, method) == -1) {
+		return -1;
+	}
+
+	p->buf = p->mem;
+	p->buf_sz = uncompressed_len;
+
+	return 0;
 }
 
 static int parse_save_data(void *data, size_t data_sz, struct game_save **out)
 {
+	struct parser p = {data, data_sz};
 	struct game_save *save = NULL;
-	struct parser p = {0};
 	struct header header;
-	void *temp_buf = NULL;
 	u32 bs;
 
-	p.buf = data;
-	p.buf_sz = data_sz;
 	if (parse_signature(&p) == (enum game)-1) {
 		eprintf("parser: not a Creation Engine save file\n");
 		return -1;
 	}
 
 	parse_u32(&bs, &p);
-	if (parse_header(&header, &p) == -1) {
-		eprintf("parser: save file too short\n");
-		return -1;
-	}
+	if (parse_header(&header, &p) == -1)
+		goto out_error;
 	if ((save = game_save_new(p.format.game, p.format.engine)) == NULL) {
 		eprintf("parser: cannot allocate memory\n");
 		return -1;
 	}
 
-	parse_snapshot(&save->snapshot, &p);
-	if (handle_decompression(&temp_buf, &p) == -1) {
-		game_save_free(save);
-		return -1;
+	if (parse_snapshot(&save->snapshot, &p) == -1)
+		goto out_error;
+	if (handle_decompression(header.compressor, &p) == -1) {
+		goto out_error;
 	}
-
-	if (parse_u8(&p.format.revision, &p) == -1) {
-		game_save_free(save);
-		return -1;
-	}
-
+	if (parse_u8(&p.format.revision, &p) == -1)
+		goto out_error;
 	if (p.format.game == FALLOUT4)
 		parse_bstr(save->game_version, sizeof(save->game_version), &p);
 
@@ -600,16 +605,19 @@ static int parse_save_data(void *data, size_t data_sz, struct game_save **out)
 			parse_u16, &p);
 	}
 
-	parse_offset_table(&p.offsets, &p);
-
-	if (p.eod) {
-		game_save_free(save);
-		eprintf("parser: save file too short\n");
-		return -1;
-	}
+	if (parse_offset_table(&p.offsets, &p) == -1)
+		goto out_error;
 
 	*out = save;
+	free(p.mem);
 	return 0;
+out_error:
+	if (p.eod)
+		eprintf("parser: save file too short\n");
+	if (save)
+		game_save_free(save);
+	free(p.mem);
+	return -1;
 }
 
 int parse_file_header_only(int fd, struct header *header)
@@ -686,7 +694,7 @@ static int parse_file_from_disk(int fd, off_t size, struct game_save **out)
 	void *contents;
 	int rc;
 
-	contents = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
+	contents = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
 	if (contents == MAP_FAILED) {
 		perror("parser: cannot mmap file");
 		return -1;
