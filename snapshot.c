@@ -23,7 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdlib.h>
 #include "snapshot.h"
 
-static int calculate_size(enum pixel_format format, int width, int height)
+static unsigned calculate_size(enum pixel_format format, int width, int height)
 {
 	int n_pixels = width * height;
 	switch (format) {
@@ -36,7 +36,7 @@ static int calculate_size(enum pixel_format format, int width, int height)
 	assert(!"snapshot contains unknown/unhandled pixel format.");
 }
 
-int snapshot_size(const struct snapshot *shot)
+unsigned snapshot_size(const struct snapshot *shot)
 {
 	return calculate_size(shot->pixel_format, shot->width, shot->height);
 }

@@ -35,7 +35,7 @@ struct snapshot {
  * Calculate the size of the snapshot pixels in bytes
  * and return it.
  */
-int snapshot_size(const struct snapshot *shot);
+unsigned snapshot_size(const struct snapshot *shot);
 
 /*
  * Initialize a snapshot. The caller is responsible for destroying it when

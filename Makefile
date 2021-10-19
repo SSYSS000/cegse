@@ -2,10 +2,9 @@ CFLAGS = -Iinclude -Wall -Wextra -g -DDEBUGGING=1
 LIBS = -llz4
 
 OBJS = 	snapshot.o \
-	save_file.o \
 	game_save.o \
-	save_stream.o \
 	compression.o \
+	serialisation.o \
 
 TARGET = cegse
 

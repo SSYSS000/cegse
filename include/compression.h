@@ -28,21 +28,10 @@ enum compressor {
 	COMPRESS_LZ4,
 };
 
-/*
- * Compress size bytes from file referenced by infd to file
- * referenced by outfd using LZ4 compression.
- *
- * Return the number of bytes written, or -1 on error.
- */
-int compress_sf(int infd, int outfd, int size, enum compressor method);
+int compress(const void *src, void *dest, int src_size, int dest_size,
+	enum compressor method);
 
-/*
- * Decompress csize bytes into dsize bytes from file referenced by infd to
- * file referenced by outfd using LZ4 compression.
- *
- * Return 0 on success, -1 on error.
- */
-int decompress_sf(int infd, int outfd, int csize, int dsize,
+int decompress(const void *src, void *dest, int src_size, int dest_size,
 	enum compressor method);
 
 #endif /* CEGSE_COMPRESSION_H */

@@ -28,7 +28,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "types.h"
 #include "defines.h"
 
-static int compress(const char *src, char *dest, int src_size, int dest_size,
+int compress(const void *src, void *dest, int src_size, int dest_size,
 	enum compressor method)
 {
 	int comp_size;
@@ -53,7 +53,7 @@ static int compress(const char *src, char *dest, int src_size, int dest_size,
 	return comp_size;
 }
 
-static int decompress(const char *src, char *dest, int src_size, int dest_size,
+int decompress(const void *src, void *dest, int src_size, int dest_size,
 	enum compressor method)
 {
 	switch (method) {

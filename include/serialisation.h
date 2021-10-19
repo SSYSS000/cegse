@@ -22,4 +22,30 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef CEGSE_SERIALISATION_H
 #define CEGSE_SERIALISATION_H
 
+#include "game_save.h"
+#include "types.h"
+
+struct header {
+	enum game game;
+	/* Creation Engine version */
+	u32 	engine;
+	u32 	save_num;
+	char 	ply_name[PLAYER_NAME_MAX_LEN + 1];
+	u32 	level;
+	char 	location[64];
+	/* Playtime or in-game date */
+	char 	game_time[48];
+	char 	race_id[48];
+	u32 	sex;
+	f32 	current_xp;
+	f32 	target_xp;
+	FILETIME filetime;
+	u32 	snapshot_width;
+	u32 	snapshot_height;
+	u32 	compressor;
+};
+
+int parse_file_header_only(int fd, struct header *header);
+int parse_file(int fd, struct game_save **out);
+
 #endif /* CEGSE_SERIALISATION_H */

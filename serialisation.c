@@ -2,12 +2,11 @@
 #include <string.h>
 #include <stdbool.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
+#include <unistd.h>
 #include "serialisation.h"
-#include "game_save.h"
+#include "compression.h"
 #include "snapshot.h"
-#include "defines.h"
-
-#include "types.h"
 #include "defines.h"
 
 #ifdef BSD
@@ -25,25 +24,6 @@
 #define parse_i16(v, p)		parse_u16((u32 *)(v), p)
 #define parse_i32(v, p)		parse_u32((u32 *)(v), p)
 #define parse_i64(v, p)		parse_u64((u64 *)(v), p)
-
-struct header {
-	/* Creation Engine version */
-	u32 	engine;
-	u32 	save_num;
-	char 	ply_name[PLAYER_NAME_MAX_LEN + 1];
-	u32 	level;
-	char 	location[64];
-	/* Playtime or in-game date */
-	char 	game_time[48];
-	char 	race_id[48];
-	u32 	sex;
-	f32 	current_xp;
-	f32 	target_xp;
-	FILETIME filetime;
-	u32 	snapshot_width;
-	u32 	snapshot_height;
-	u32 	compressor;
-};
 
 struct offset_table {
 	u32 off_form_ids_count;
@@ -91,16 +71,8 @@ struct parser {
 	unsigned eod;
 };
 
-static const char *get_magic_bytes(const struct serialise_format *f)
-{
-	switch (f->game) {
-	case SKYRIM:
-		return "SKYRIM";
-	case FALLOUT4:
-		return "FO4_SAVEGAME";
-	}
-	return NULL;
-}
+static const char skyrim_signature[] = {'T','E','S','V','_','S','A','V','E','G','A','M','E'};
+static const char fallout4_signature[] = {'F','O','4','_','S','A','V','E','G','A','M','E'};
 
 /*
  * Check if edition is Skyrim Special Edition.
@@ -351,6 +323,28 @@ static inline void parser_remove(size_t n, struct parser *p)
 	p->buf_sz -= n;
 }
 
+static enum game parse_signature(struct parser *p)
+{
+	enum game game = (enum game)-1;
+	/*
+	 * 32 should be more than enough to cover all signatures.
+	 * No file signature is this long, but a valid save file should
+	 * be at least 32 bytes long...
+	 */
+	RETURN_EOD_IF_SHORT(32, p);
+
+	if (!memcmp(p->buf, skyrim_signature, sizeof(skyrim_signature))) {
+		game = SKYRIM;
+		parser_remove(sizeof(skyrim_signature), p);
+	}
+	else if (!memcmp(p->buf, fallout4_signature, sizeof(fallout4_signature))) {
+		game = FALLOUT4;
+		parser_remove(sizeof(fallout4_signature), p);
+	}
+	p->format.game = game;
+	return game;
+}
+
 static int parse_u8(u32 *value, struct parser *p)
 {
 	RETURN_EOD_IF_SHORT(sizeof(u8), p);
@@ -453,8 +447,9 @@ static int parse_bstr_m(char **string, struct parser *p)
 	return len;
 }
 
-static static int parse_header(struct header *header, struct parser *p)
+static int parse_header(struct header *header, struct parser *p)
 {
+	header->game = p->format.game;
 	parse_u32(&header->engine, p);
 	parse_u32(&header->save_num, p);
 	parse_bstr(header->ply_name, sizeof(header->ply_name), p);
@@ -529,7 +524,7 @@ static int parse_bstr_array(char ***array, u32 *array_len,
 static int parse_snapshot(struct snapshot **snapshot, struct parser *p)
 {
 	enum pixel_format px_format;
-	int shot_sz;
+	unsigned shot_sz;
 
 	px_format = which_snapshot_format(&p->format);
 	*snapshot = snapshot_new(px_format, p->snapshot_width, p->snapshot_height);
@@ -541,4 +536,180 @@ static int parse_snapshot(struct snapshot **snapshot, struct parser *p)
 	memcpy((*snapshot)->data, p->buf, shot_sz);
 	parser_remove(shot_sz, p);
 	return 0;
+}
+
+static int handle_decompression(void **tmp_buf, struct parser *p)
+{
+	u32 compressed_len;
+	u32 uncompressed_len;
+
+	if (!can_use_compressor(&p->format))
+		return 0;
+
+	parse_u32(&compressed_len, p);
+	parse_u32(&uncompressed_len, p);
+	if (p->eod)
+		return -1;
+
+
+}
+
+static int parse_save_data(void *data, size_t data_sz, struct game_save **out)
+{
+	struct game_save *save = NULL;
+	struct parser p = {0};
+	struct header header;
+	void *temp_buf = NULL;
+	u32 bs;
+
+	p.buf = data;
+	p.buf_sz = data_sz;
+	if (parse_signature(&p) == (enum game)-1) {
+		eprintf("parser: not a Creation Engine save file\n");
+		return -1;
+	}
+
+	parse_u32(&bs, &p);
+	if (parse_header(&header, &p) == -1) {
+		eprintf("parser: save file too short\n");
+		return -1;
+	}
+	if ((save = game_save_new(p.format.game, p.format.engine)) == NULL) {
+		eprintf("parser: cannot allocate memory\n");
+		return -1;
+	}
+
+	parse_snapshot(&save->snapshot, &p);
+	if (handle_decompression(&temp_buf, &p) == -1) {
+		game_save_free(save);
+		return -1;
+	}
+
+	if (parse_u8(&p.format.revision, &p) == -1) {
+		game_save_free(save);
+		return -1;
+	}
+
+	if (p.format.game == FALLOUT4)
+		parse_bstr(save->game_version, sizeof(save->game_version), &p);
+
+	parse_u32(&bs, &p);
+	parse_bstr_array(&save->plugins, &save->num_plugins, parse_u8, &p);
+	if (has_light_plugins(&p.format)) {
+		parse_bstr_array(&save->light_plugins, &save->num_light_plugins,
+			parse_u16, &p);
+	}
+
+	parse_offset_table(&p.offsets, &p);
+
+	if (p.eod) {
+		game_save_free(save);
+		eprintf("parser: save file too short\n");
+		return -1;
+	}
+
+	*out = save;
+	return 0;
+}
+
+int parse_file_header_only(int fd, struct header *header)
+{
+	struct parser p = {0};
+	char buf[1024];
+	u32 header_sz;
+	int in_len;
+
+	if ((in_len = read(fd, buf, sizeof(buf))) == -1) {
+		perror("parser: cannot read file");
+		return -1;
+	}
+
+	p.buf = buf;
+	p.buf_sz = in_len;
+
+	if (parse_signature(&p) == (enum game)-1) {
+		eprintf("parser: not a Creation Engine save file\n");
+		return -1;
+	}
+
+	parse_u32(&header_sz, &p);
+
+	if (parse_header(header, &p) == -1) {
+		eprintf("parser: save file too short\n");
+		return -1;
+	}
+
+	return 0;
+}
+
+static int parse_file_from_pipe(int fd, struct game_save **out)
+{
+	size_t block = 10u * 1024u * 1024u;
+	int in_length, total_read = 0;
+	size_t buf_sz = 0u;
+	void *buf = NULL;
+	void *temp = NULL;
+
+	while (1) {
+		buf_sz += block;
+		temp = realloc(buf, buf_sz);
+		if (!temp) {
+			free(buf);
+			eprintf("parser: cannot allocate memory\n");
+			return -1;
+		}
+		buf = temp;
+
+		if ((in_length = read(fd, buf + total_read, block)) <= 0)
+			break;
+
+		total_read += in_length;
+	}
+
+	if (in_length == -1) {
+		perror("parser: cannot read from pipe");
+		free(buf);
+		return -1;
+	}
+
+	if (parse_save_data(buf, total_read, out) == -1) {
+		free(buf);
+		return -1;
+	}
+
+	free(buf);
+	return 0;
+}
+
+static int parse_file_from_disk(int fd, off_t size, struct game_save **out)
+{
+	void *contents;
+	int rc;
+
+	contents = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
+	if (contents == MAP_FAILED) {
+		perror("parser: cannot mmap file");
+		return -1;
+	}
+	madvise(contents, size, MADV_SEQUENTIAL);
+	rc = parse_save_data(contents, size, out);
+	munmap(contents, size);
+	return rc;
+}
+
+int parse_file(int fd, struct game_save **out)
+{
+	struct stat stat;
+	int rc;
+
+	if (fstat(fd, &stat) == -1) {
+		perror("parser: cannot fstat file");
+		return -1;
+	}
+
+	if (S_ISFIFO(stat.st_mode))
+		rc = parse_file_from_pipe(fd, out);
+	else
+		rc = parse_file_from_disk(fd, stat.st_size, out);
+	return rc;
 }
