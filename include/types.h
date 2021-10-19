@@ -45,4 +45,18 @@ typedef float f32;
  */
 typedef u64 FILETIME;
 
+typedef u32 ref_t;
+
+#define REF_TYPE(ref_id)	((ref_id) & 0x3u)
+#define REF_VALUE(ref_id)	((ref_id) >> 0x3u)
+
+ /* Reference is an index to a form ID array */
+#define REF_INDEX(ref_id)	(REF_TYPE(ref_id) == 0u)
+
+ /* Reference is to a regular object (in .esm) */
+#define REF_REGULAR(ref_id)	(REF_TYPE(ref_id) == 1u)
+
+ /* Reference is to a created object (not in .esm) */
+#define REF_CREATED(ref_id)	(REF_TYPE(ref_id) == 2u)
+
 #endif // CEGSE_TYPES_H
