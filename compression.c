@@ -19,19 +19,15 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include <stdlib.h>
 #include <errno.h>
-#include <sys/mman.h>
-#include <unistd.h>
 #include <lz4.h>
 #include "compression.h"
-#include "types.h"
 #include "defines.h"
 
 int compress(const void *src, void *dest, int src_size, int dest_size,
 	enum compressor method)
 {
-	int comp_size;
+	int comp_size = 0;
 
 	switch (method) {
 	case COMPRESS_NONE:
