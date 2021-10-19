@@ -34,6 +34,9 @@ enum global_data_type {
 	GLOBAL_WEATHER			= 6,
 	GLOBAL_AUDIO			= 7,
 	GLOBAL_SKY_CELLS		= 8,
+	GLOBAL_UNKNOWN_9		= 9,
+	GLOBAL_UNKNOWN_10		= 10,
+	GLOBAL_UNKNOWN_11		= 11,
 	GLOBAL_PROCESS_LISTS		= 100,
 	GLOBAL_COMBAT			= 101,
 	GLOBAL_INTERFACE		= 102,
@@ -49,11 +52,14 @@ enum global_data_type {
 	GLOBAL_INGREDIENT_SHARED	= 112,
 	GLOBAL_MENU_CONTROLS		= 113,
 	GLOBAL_MENU_TOPIC_MANAGER	= 114,
+	GLOBAL_UNKNOWN_115		= 115,
+	GLOBAL_UNKNOWN_116		= 116,
+	GLOBAL_UNKNOWN_117		= 117,
 	GLOBAL_TEMP_EFFECTS		= 1000,
 	GLOBAL_PAPYRUS			= 1001,
 	GLOBAL_ANIM_OBJECTS		= 1002,
 	GLOBAL_TIMER			= 1003,
-	GLOBAL_SYNCHRONIZED_ANIMS 	= 1004,
+	GLOBAL_SYNCHRONISED_ANIMS 	= 1004,
 	GLOBAL_MAIN			= 1005
 };
 
@@ -67,10 +73,13 @@ enum misc_stat_category {
 	MS_DLC		= 6
 };
 
-struct misc_stat {
-	enum misc_stat_category category;
-	char *name;
-	i32 value;
+struct misc_stats {
+	u32 count;
+	struct {
+		enum misc_stat_category category;
+		char name[48];
+		i32 value;
+	} *stats;
 };
 
 struct weather {
@@ -128,9 +137,12 @@ struct player_location {
 	u32 unknown; /* vsval? It seems absent in 9th version */
 };
 
-struct global_var {
-	ref_t form_id;
-	f32 value;
+struct global_vars {
+	u32 count;
+	struct {
+		ref_t form_id;
+		f32 value;
+	} *vars;
 };
 
 struct raw_global {
@@ -138,20 +150,44 @@ struct raw_global {
 	char *data;
 };
 
-union global_data_value {
-	struct misc_stat misc_stat;
-	struct weather weather;
-	struct global_var global_var;
-	struct player_location player_location;
-	struct raw_global raw;
-};
-
 struct global_data {
-	enum global_data_type type;
-	union global_data_value value;
+	struct misc_stats stats;
+	struct player_location player_location;
+	struct raw_global game;
+	struct global_vars global_vars;
+	struct raw_global created_objs;
+	struct raw_global effects;
+	struct weather weather;
+	struct raw_global audio;
+	struct raw_global sky_cells;
+	struct raw_global unknown_9;  /* Fallout 4 */
+	struct raw_global unknown_10; /* Fallout 4 */
+	struct raw_global unknown_11; /* Fallout 4 */
+	struct raw_global process_lists;
+	struct raw_global combat;
+	struct raw_global interface;
+	struct raw_global actor_causes;
+	struct raw_global unknown_104;
+	struct raw_global detection_man;
+	struct raw_global location_meta;
+	struct raw_global quest_static; /* Skyrim */
+	struct raw_global story_teller;
+	struct raw_global magic_favs;
+	struct raw_global player_ctrls;
+	struct raw_global story_event_man;
+	struct raw_global ingredient_shared;
+	struct raw_global menu_ctrls;
+	struct raw_global menu_topic_man;
+	struct raw_global unknown_115; /* Fallout 4 */
+	struct raw_global unknown_116; /* Fallout 4 */
+	struct raw_global unknown_117; /* Fallout 4 */
+	struct raw_global temp_effects;
+	struct raw_global papyrus;
+	struct raw_global anim_objs;
+	struct raw_global timer;
+	struct raw_global synced_anims;
+	struct raw_global main;
 };
-
-void raw_global_free(struct raw_global *raw);
 
 void global_data_free(struct global_data *gdata);
 

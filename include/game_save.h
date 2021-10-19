@@ -56,8 +56,7 @@ struct game_save {
 	u32 num_light_plugins;
 	char **light_plugins;
 
-	u32 num_globals;
-	struct global_data *globals;
+	struct global_data globals;
 };
 
 /*

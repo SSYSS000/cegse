@@ -23,22 +23,49 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdbool.h>
 #include "global_data.h"
 
-void raw_global_free(struct raw_global *raw)
+static inline void free_misc_stats(struct misc_stats *stats)
+{
+	free(stats->stats);
+}
+
+static inline void free_global_vars(struct global_vars *vars)
+{
+	free(vars->vars);
+}
+
+static inline void free_raw_global(struct raw_global *raw)
 {
 	free(raw->data);
 }
 
-static bool is_valid_type(enum global_data_type type)
-{
-	return 0 <= type && type <= 1005;
-}
-
 void global_data_free(struct global_data *gdata)
 {
-	if (!is_valid_type(gdata->type))
-		return;
-	switch (gdata->type) {
-	default:
-		raw_global_free(&gdata->value.raw);
-	}
+	free_misc_stats(&gdata->stats);
+	free_raw_global(&gdata->game);
+	free_global_vars(&gdata->global_vars);
+	free_raw_global(&gdata->created_objs);
+	free_raw_global(&gdata->effects);
+	free_raw_global(&gdata->audio);
+	free_raw_global(&gdata->sky_cells);
+	free_raw_global(&gdata->process_lists);
+	free_raw_global(&gdata->combat);
+	free_raw_global(&gdata->interface);
+	free_raw_global(&gdata->actor_causes);
+	free_raw_global(&gdata->unknown_104);
+	free_raw_global(&gdata->detection_man);
+	free_raw_global(&gdata->location_meta);
+	free_raw_global(&gdata->quest_static);
+	free_raw_global(&gdata->story_teller);
+	free_raw_global(&gdata->magic_favs);
+	free_raw_global(&gdata->player_ctrls);
+	free_raw_global(&gdata->story_event_man);
+	free_raw_global(&gdata->ingredient_shared);
+	free_raw_global(&gdata->menu_ctrls);
+	free_raw_global(&gdata->menu_topic_man);
+	free_raw_global(&gdata->temp_effects);
+	free_raw_global(&gdata->papyrus);
+	free_raw_global(&gdata->anim_objs);
+	free_raw_global(&gdata->timer);
+	free_raw_global(&gdata->synced_anims);
+	free_raw_global(&gdata->main);
 }

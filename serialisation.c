@@ -325,6 +325,14 @@ static inline void parser_remove(size_t n, struct parser *p)
 	p->buf_sz -= n;
 }
 
+static int parser_copy(void *dest, u32 n, struct parser *p)
+{
+	RETURN_EOD_IF_SHORT(n, p);
+	memcpy(dest, p->buf, n);
+	parser_remove(n, p);
+	return 0;
+}
+
 static enum game parse_signature(struct parser *p)
 {
 	enum game game = (enum game)-1;
@@ -407,6 +415,7 @@ static int parse_vsval(u32 *value, struct parser *p)
 	}
 
 	parser_remove(i, p);
+	*value >>= 2;
 	return 0;
 }
 
@@ -525,6 +534,17 @@ static int parse_bstr_array(char ***array, u32 *array_len,
 	return 0;
 }
 
+static int parse_ref_id(u32 *ref, struct parser *p)
+{
+	u8 bytes[3];
+
+	if (parser_copy(bytes, sizeof(bytes), p) == -1)
+		return -1;
+
+	*ref = bytes[2] << 16 | bytes[1] << 8 | bytes[0];
+	return 0;
+}
+
 static int parse_snapshot(struct snapshot **snapshot, struct parser *p)
 {
 	enum pixel_format px_format;
@@ -536,10 +556,102 @@ static int parse_snapshot(struct snapshot **snapshot, struct parser *p)
 		return -1;
 
 	shot_sz = snapshot_size(*snapshot);
-	RETURN_EOD_IF_SHORT(shot_sz, p);
-	memcpy((*snapshot)->data, p->buf, shot_sz);
-	parser_remove(shot_sz, p);
-	return 0;
+	return parser_copy((*snapshot)->data, shot_sz, p);
+}
+
+static int parse_misc_stats(struct misc_stats *stats, struct parser *p)
+{
+	u32 count, i;
+
+	if (parse_u32(&count, p) == -1)
+		return -1;
+
+	stats->stats = malloc(count * sizeof(*stats->stats));
+	if (!stats->stats) {
+		eprintf("parser: no memory\n");
+		return -1;
+	}
+	stats->count = count;
+
+	for (i = 0u; i < count; ++i) {
+		parse_bstr(stats->stats[i].name, sizeof(stats->stats[i].name), p);
+		parse_u8(&stats->stats[i].category, p);
+		parse_i32(&stats->stats[i].value, p);
+	}
+
+	return p->eod ? -1 : 0;
+}
+
+static int parse_global_vars(struct global_vars *vars, struct parser *p)
+{
+	u32 count, i;
+
+	if (parse_vsval(&count, p) == -1)
+		return -1;
+
+	vars->vars = malloc(count * sizeof(*vars->vars));
+	if (!vars->vars) {
+		eprintf("parser: no memory\n");
+		return -1;
+	}
+
+	for (i = 0u; i < count; ++i) {
+		parse_ref_id(&vars->vars[i].form_id, p);
+		parse_f32(&vars->vars[i].value, p);
+	}
+
+	return p->eod ? -1 : 0;
+}
+
+static int parse_player_location(struct player_location *pl, struct parser *p)
+{
+	parse_u32(&pl->next_object_id, p);
+	parse_ref_id(&pl->world_space1, p);
+	parse_i32(&pl->coord_x, p);
+	parse_i32(&pl->coord_y, p);
+	parse_ref_id(&pl->world_space2, p);
+	parse_f32(&pl->pos_x, p);
+	parse_f32(&pl->pos_y, p);
+	parse_f32(&pl->pos_z, p);
+	if (p->format.game == SKYRIM)
+		parse_u8(&pl->unknown, p);
+	return p->eod ? -1 : 0;
+}
+
+static int parse_weather(struct weather *w, u32 len, struct parser *p)
+{
+	size_t start = p->buf_sz;
+	u32 i;
+
+	parse_ref_id(&w->climate, p);
+	parse_ref_id(&w->weather, p);
+	parse_ref_id(&w->prev_weather, p);
+	parse_ref_id(&w->unk_weather1, p);
+	parse_ref_id(&w->unk_weather2, p);
+	parse_ref_id(&w->regn_weather, p);
+	parse_f32(&w->current_time, p);
+	parse_f32(&w->begin_time, p);
+	parse_f32(&w->weather_pct, p);
+
+	for (i = 0u; i < ARRAY_SIZE(w->data1); ++i)
+		parse_u32(&w->data1[i], p);
+
+	parse_f32(&w->data2, p);
+	parse_u32(&w->data3, p);
+	parse_u8(&w->flags, p);
+	if (p->eod)
+		return -1;
+
+	w->data4_sz = start - p->buf_sz - len;
+	w->data4 = malloc(w->data4_sz);
+	if (!w->data4) {
+		eprintf("parser: no memory\n");
+		return -1;
+	}
+
+	parser_copy(w->data4, w->data4_sz, p);
+
+	return p->eod ? -1 : 0;
 }
 
 static int parse_raw_global(struct raw_global *raw, u32 len, struct parser *p)
@@ -547,14 +659,14 @@ static int parse_raw_global(struct raw_global *raw, u32 len, struct parser *p)
 	raw->data = malloc(len);
 	if (!raw->data)
 		return -1;
-	memcpy(raw->data, p->buf, len);
-	parser_remove(len, p);
 	raw->data_sz = len;
-	return 0;
+	return parser_copy(raw->data, len, p);
 }
 
 static int parse_global_data(struct global_data *out, struct parser *p)
 {
+	size_t start_pos;
+	size_t n_removed;
 	u32 type;
 	u32 len;
 	int rc;
@@ -565,13 +677,139 @@ static int parse_global_data(struct global_data *out, struct parser *p)
 		return -1;
 
 	RETURN_EOD_IF_SHORT(len, p);
-	out->type = type;
+	start_pos = p->buf_sz;
+	printf("type: %u, len: %u\n", type, len);
 	switch (type) {
+	case GLOBAL_MISC_STATS:
+		rc = parse_misc_stats(&out->stats, p);
+		break;
+	case GLOBAL_PLAYER_LOCATION:
+		rc = parse_player_location(&out->player_location, p);
+		break;
+	case GLOBAL_GAME:
+		rc = parse_raw_global(&out->game, len, p);
+		break;
+	case GLOBAL_GLOBAL_VARIABLES:
+		rc = parse_global_vars(&out->global_vars, p);
+		break;
+	case GLOBAL_CREATED_OBJECTS:
+		rc = parse_raw_global(&out->created_objs, len, p);
+		break;
+	case GLOBAL_EFFECTS:
+		rc = parse_raw_global(&out->effects, len, p);
+		break;
+	case GLOBAL_WEATHER:
+		rc = parse_weather(&out->weather, len, p);
+		break;
+	case GLOBAL_AUDIO:
+		rc = parse_raw_global(&out->audio, len, p);
+		break;
+	case GLOBAL_SKY_CELLS:
+		rc = parse_raw_global(&out->sky_cells, len, p);
+		break;
+	case GLOBAL_UNKNOWN_9:
+		rc = parse_raw_global(&out->unknown_9, len, p);
+		break;
+	case GLOBAL_UNKNOWN_10:
+		rc = parse_raw_global(&out->unknown_10, len, p);
+		break;
+	case GLOBAL_UNKNOWN_11:
+		rc = parse_raw_global(&out->unknown_11, len, p);
+		break;
+	case GLOBAL_PROCESS_LISTS:
+		rc = parse_raw_global(&out->process_lists, len, p);
+		break;
+	case GLOBAL_COMBAT:
+		rc = parse_raw_global(&out->combat, len, p);
+		break;
+	case GLOBAL_INTERFACE:
+		rc = parse_raw_global(&out->interface, len, p);
+		break;
+	case GLOBAL_ACTOR_CAUSES:
+		rc = parse_raw_global(&out->actor_causes, len, p);
+		break;
+	case GLOBAL_UNKNOWN_104:
+		rc = parse_raw_global(&out->unknown_104, len, p);
+		break;
+	case GLOBAL_DETECTION_MANAGER:
+		rc = parse_raw_global(&out->detection_man, len, p);
+		break;
+	case GLOBAL_LOCATION_METADATA:
+		rc = parse_raw_global(&out->location_meta, len, p);
+		break;
+	case GLOBAL_QUEST_STATIC_DATA:
+		rc = parse_raw_global(&out->quest_static, len, p);
+		break;
+	case GLOBAL_STORYTELLER:
+		rc = parse_raw_global(&out->story_teller, len, p);
+		break;
+	case GLOBAL_MAGIC_FAVORITES:
+		rc = parse_raw_global(&out->magic_favs, len, p);
+		break;
+	case GLOBAL_PLAYER_CONTROLS:
+		rc = parse_raw_global(&out->player_ctrls, len, p);
+		break;
+	case GLOBAL_STORY_EVENT_MANAGER:
+		rc = parse_raw_global(&out->story_event_man, len, p);
+		break;
+	case GLOBAL_INGREDIENT_SHARED:
+		rc = parse_raw_global(&out->ingredient_shared, len, p);
+		break;
+	case GLOBAL_MENU_CONTROLS:
+		rc = parse_raw_global(&out->menu_ctrls, len, p);
+		break;
+	case GLOBAL_MENU_TOPIC_MANAGER:
+		rc = parse_raw_global(&out->menu_topic_man, len, p);
+		break;
+	case GLOBAL_UNKNOWN_115:
+		rc = parse_raw_global(&out->unknown_115, len, p);
+		break;
+	case GLOBAL_UNKNOWN_116:
+		rc = parse_raw_global(&out->unknown_116, len, p);
+		break;
+	case GLOBAL_UNKNOWN_117:
+		rc = parse_raw_global(&out->unknown_117, len, p);
+		break;
+	case GLOBAL_TEMP_EFFECTS:
+		rc = parse_raw_global(&out->temp_effects, len, p);
+		break;
+	case GLOBAL_PAPYRUS:
+		rc = parse_raw_global(&out->papyrus, len, p);
+		break;
+	case GLOBAL_ANIM_OBJECTS:
+		rc = parse_raw_global(&out->anim_objs, len, p);
+		break;
+	case GLOBAL_TIMER:
+		rc = parse_raw_global(&out->timer, len, p);
+		break;
+	case GLOBAL_SYNCHRONISED_ANIMS:
+		rc = parse_raw_global(&out->synced_anims, len, p);
+		break;
+	case GLOBAL_MAIN:
+		rc = parse_raw_global(&out->main, len, p);
+		break;
 	default:
-		rc = parse_raw_global(&out->value.raw, len, p);
+		eprintf("parser: unexpected global data type (%u)\n", type);
+		return -1;
 	}
 
-	return rc;
+	if (rc == -1)
+		return -1;
+
+	n_removed = start_pos - p->buf_sz;
+
+	if (n_removed > len) {
+		eprintf("parser: global data: read %u more than should have\n",
+			(unsigned)(n_removed - len));
+		return -1;
+	}
+	else if (n_removed < len) {
+		eprintf("parser: global data: read %u less than should have\n",
+			(unsigned)(len - n_removed));
+		return -1;
+	}
+
+	return 0;
 }
 
 static int handle_decompression(enum compressor method, struct parser *p)
@@ -642,19 +880,10 @@ static int parse_save_data(void *data, size_t data_sz, struct game_save **out)
 	if (parse_offset_table(&p.offsets, &p) == -1)
 		goto out_error;
 
-	num_globals_total = p.offsets.num_globals1 + p.offsets.num_globals2 +
-		p.offsets.num_globals3;
-	save->globals = malloc(num_globals_total * sizeof(*save->globals));
-	if (!save->globals) {
-		eprintf("parser: cannot allocate memory\n");
-		goto out_error;
-	}
-
 	for (i = 0u; i < p.offsets.num_globals1 + p.offsets.num_globals2; ++i) {
-		if (parse_global_data(save->globals + save->num_globals, &p) == -1) {
+		if (parse_global_data(&save->globals, &p) == -1) {
 			goto out_error;
 		}
-		save->num_globals++;
 	}
 
 	*out = save;
