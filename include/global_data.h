@@ -100,11 +100,32 @@ struct weather {
 
 	u32 data1[6];
 	f32 data2;
+
+	 /*
+	  * data3 seems to affect sky colour.
+	  * Anything other than 2 or 3 makes the sky purple in
+	  * Sanctuary in Fallout.
+	  */
 	u32 data3;
 	u32 flags;
 
 	u32 data4_sz;
-	char *data4;	/* Only present if flags has bit 0 or 1 set. */
+	unsigned char *data4;	/* Only present if flags has bit 0 or 1 set. */
+
+	/*
+	 * If flags & 0x1:
+	 * data4 {
+	 * 	u16, (?)
+	 * 	i8, (?)
+	 * 	i8, (?)
+	 *
+	 * 	seems to be incrementing rapidly in game.
+	 * 	cannot be vsval or ref_id.
+	 * 	u8[3],
+	 * 	...
+	 * }
+	 *
+	 */
 };
 
 struct player_location {

@@ -642,13 +642,13 @@ static int parse_weather(struct weather *w, u32 len, struct parser *p)
 	if (p->eod)
 		return -1;
 
-	w->data4_sz = start - p->buf_sz - len;
+	w->data4_sz = len - (start - p->buf_sz);
 	w->data4 = malloc(w->data4_sz);
 	if (!w->data4) {
 		eprintf("parser: no memory\n");
 		return -1;
 	}
-
+	printf("data4 at %zu\n", p->buf_sz);
 	parser_copy(w->data4, w->data4_sz, p);
 
 	return p->eod ? -1 : 0;
@@ -678,7 +678,7 @@ static int parse_global_data(struct global_data *out, struct parser *p)
 
 	RETURN_EOD_IF_SHORT(len, p);
 	start_pos = p->buf_sz;
-	printf("type: %u, len: %u\n", type, len);
+	/* printf("type: %u, len: %u\n", type, len); */
 	switch (type) {
 	case GLOBAL_MISC_STATS:
 		rc = parse_misc_stats(&out->stats, p);
