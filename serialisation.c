@@ -60,10 +60,16 @@ struct serialiser {
 struct parser {
 	struct file_context *ctx;
 
-	const void *buf;	/* Data being parsed */
-	size_t buf_sz;		/* Size of buf */
+	/*
+	 * sp_data points to a decompressed data block that a sub parser
+	 * accesses. It must be freed when the sub parser goes out of scope.
+	 * For the top level parser this is NULL.
+	 */
+	void *sp_data;
+
+	const void *buf;	/* Pointer to the next item for parsing */
+	size_t buf_sz;		/* The number of bytes remaining in buf */
 	size_t offset;		/* File offset */
-	void *mem;		/* Memory mallocated during parsing */
 
 	/*
 	 * End of data condition.
@@ -360,29 +366,34 @@ static int parser_copy(void *dest, u32 n, struct parser *p)
 
 static void parser_free(struct parser *p)
 {
-	free(p->mem);
+	free(p->sp_data);
 }
 
 static int new_subparser(struct parser *restrict new, u32 com_len, u32 uncom_len,
 	enum compressor method, struct parser *restrict p)
 {
+	void *decompressed;
+	int rc;
+
 	RETURN_EOD_IF_SHORT(com_len, p);
 
-	memcpy(new, p, sizeof(*new));
-	new->mem = malloc(uncom_len);
-	if (!new->mem) {
+	decompressed = malloc(uncom_len);
+	if (!decompressed) {
 		eprintf("parser: no memory\n");
 		return -1;
 	}
 
-	if (cegse_decompress(p->buf, new->mem, com_len, uncom_len, method) == -1) {
-		parser_free(new);
+	rc = cegse_decompress(p->buf, decompressed, com_len, uncom_len, method);
+	if (rc == -1) {
+		free(decompressed);
 		return -1;
 	}
 
+	memcpy(new, p, sizeof(*new));
 	parser_remove(com_len, p);
 
-	new->buf = new->mem;
+	new->sp_data = decompressed;
+	new->buf = decompressed;
 	new->buf_sz = uncom_len;
 	return 0;
 }
