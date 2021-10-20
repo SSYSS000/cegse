@@ -994,8 +994,8 @@ static int parse_save_data(void *data, size_t data_sz, struct game_save **out)
 		goto out_error;
 
 	if ((save = game_save_new(p.format.game, p.format.engine)) == NULL) {
-		eprintf("parser: cannot allocate memory\n");
-		return -1;
+		eprintf("parser: no memory\n");
+		goto out_error;
 	}
 	save->time_saved = filetime_to_time(header.filetime);
 
@@ -1010,11 +1010,11 @@ static int parse_save_data(void *data, size_t data_sz, struct game_save **out)
 		parse_u32(&uncom_len, &p);
 		parse_u32(&com_len, &p);
 		if (p.eod)
-			return -1;
+			goto out_error;
 		rc = new_subparser(&subp, com_len, uncom_len,
 			header.compressor, &p);
 		if (rc == -1)
-			return -1;
+			goto out_error;
 		p = subp;
 	}
 
