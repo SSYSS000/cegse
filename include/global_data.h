@@ -60,7 +60,9 @@ enum global_data_type {
 	GLOBAL_ANIM_OBJECTS		= 1002,
 	GLOBAL_TIMER			= 1003,
 	GLOBAL_SYNCHRONISED_ANIMS 	= 1004,
-	GLOBAL_MAIN			= 1005
+	GLOBAL_MAIN			= 1005,
+	GLOBAL_UNKNOWN_1006		= 1006,
+	GLOBAL_UNKNOWN_1007		= 1007
 };
 
 enum misc_stat_category {
@@ -208,6 +210,8 @@ struct global_data {
 	struct raw_global timer;
 	struct raw_global synced_anims;
 	struct raw_global main;
+	struct raw_global unknown_1006; /* Fallout 4 */
+	struct raw_global unknown_1007; /* Fallout 4 */
 };
 
 void global_data_free(struct global_data *gdata);

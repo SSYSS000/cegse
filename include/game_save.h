@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "types.h"
 #include "snapshot.h"
 #include "global_data.h"
+#include "change_forms.h"
 
 enum game {
 	SKYRIM,
@@ -57,6 +58,18 @@ struct game_save {
 	char **light_plugins;
 
 	struct global_data globals;
+
+	u32 num_change_forms;
+	struct change_form *change_forms;
+
+	u32 num_form_ids;
+	u32 *form_ids;
+
+	u32 num_world_spaces;
+	u32 *world_spaces;
+
+	u32 unknown3_sz;
+	u32 *unknown3;
 };
 
 /*

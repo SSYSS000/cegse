@@ -350,7 +350,7 @@ static int new_subparser(struct parser *restrict new, u32 com_len, u32 uncom_len
 		return -1;
 	}
 
-	if (decompress(p->buf, new->mem, com_len, uncom_len, method) == -1) {
+	if (cegse_decompress(p->buf, new->mem, com_len, uncom_len, method) == -1) {
 		parser_free(new);
 		return -1;
 	}
@@ -707,7 +707,7 @@ static int parse_global_data(struct global_data *out, struct parser *p)
 
 	RETURN_EOD_IF_SHORT(len, p);
 	start_pos = p->buf_sz;
-	printf("type: %u, len: %u\n", type, len);
+	printf("global: %u\n", type);
 	switch (type) {
 	case GLOBAL_MISC_STATS:
 		rc = parse_misc_stats(&out->stats, p);
@@ -817,6 +817,12 @@ static int parse_global_data(struct global_data *out, struct parser *p)
 	case GLOBAL_MAIN:
 		rc = parse_raw_global(&out->main, len, p);
 		break;
+	case GLOBAL_UNKNOWN_1006:
+		rc = parse_raw_global(&out->unknown_1006, len, p);
+		break;
+	case GLOBAL_UNKNOWN_1007:
+		rc = parse_raw_global(&out->unknown_1007, len, p);
+		break;
 	default:
 		eprintf("parser: unexpected global data type (%u)\n", type);
 		return -1;
@@ -841,34 +847,29 @@ static int parse_global_data(struct global_data *out, struct parser *p)
 	return 0;
 }
 
-static int parse_change_form(struct parser *p)
+static int parse_change_form(struct change_form *cf, struct parser *p)
 {
-	ref_t form_id;
-	u32 flags;
-	u32 type; /* Upper 2 bits represent the size of data lengths. */
-	u32 length1, length2;
-	u32 version;
-
-	parse_ref_id(&form_id, p);
-	parse_u32(&flags, p);
-	parse_u8(&type, p);
-	parse_u8(&version, p);
+	parse_ref_id(&cf->form_id, p);
+	parse_u32(&cf->flags, p);
+	parse_u8(&cf->type, p);
+	parse_u8(&cf->version, p);
 	if (p->eod)
 		return -1;
-	printf("at: %u\n", p->buf_sz);
-	printf("cft: %u\n", type);
-	switch (type & 0x3u) {
+
+	printf("change form: %u\n", cf->type);
+
+	switch (cf->type >> 6) {
 	case 0u:
-		parse_u8(&length1, p);
-		parse_u8(&length2, p);
+		parse_u8(&cf->length1, p);
+		parse_u8(&cf->length2, p);
 		break;
 	case 1u:
-		parse_u16(&length1, p);
-		parse_u16(&length2, p);
+		parse_u16(&cf->length1, p);
+		parse_u16(&cf->length2, p);
 		break;
 	case 2u:
-		parse_u32(&length1, p);
-		parse_u32(&length2, p);
+		parse_u32(&cf->length1, p);
+		parse_u32(&cf->length2, p);
 		break;
 	default:
 		eprintf("parser: impossible change form length type\n");
@@ -876,48 +877,49 @@ static int parse_change_form(struct parser *p)
 	}
 	if (p->eod)
 		return -1;
-	type >>= 2u;
-	printf("length1: %u\n", length1);
-	if (length2 > 0u) {
-		/* Following data is zlib compressed. */
-		printf("zlib compressed data\n");
-		printf("length2: %u\n", length2);
+	cf->type &= 0x3fu;
+
+	RETURN_EOD_IF_SHORT(cf->length1, p);
+
+	cf->data = malloc(cf->length1);
+	if (!cf->data) {
+		eprintf("parser: no memory\n");
+		return -1;
 	}
 
-	parser_remove(length1, p);
-
+	parser_copy(cf->data, cf->length1, p);
 	return 0;
 }
 
-static int handle_decompression(enum compressor method, struct parser *p)
+static int parse_uint_array(u32 **array, u32 *len, struct parser *p)
 {
-	u32 uncompressed_len;
-	u32 compressed_len;
+	u32 *larray;
+	u32 llen, i;
 
-	if (!can_use_compressor(&p->format))
-		return 0;
-
-	parse_u32(&uncompressed_len, p);
-	parse_u32(&compressed_len, p);
-	if (p->eod)
+	if (parse_u32(&llen, p) == -1)
 		return -1;
+	printf("uint array len: %u\n", llen);
 
-	RETURN_EOD_IF_SHORT(compressed_len, p);
-	p->mem = malloc(uncompressed_len);
-
-	if (decompress(p->buf, p->mem, compressed_len, uncompressed_len, method) == -1) {
+	larray = malloc(llen * sizeof(*larray));
+	if (!larray) {
+		eprintf("parser: no memory\n");
 		return -1;
 	}
 
-	p->buf = p->mem;
-	p->buf_sz = uncompressed_len;
+	for (i = 0u; i < llen; ++i) {
+		if (parse_u32(larray + i, p) == -1)
+			return -1;
+	}
 
+	*len = llen;
+	*array = larray;
 	return 0;
 }
 
 static int parse_body(struct game_save *save, struct parser *p)
 {
 	u32 bs, i;
+	int rc;
 
 	if (parse_u8(&p->format.revision, p) == -1)
 		return -1;
@@ -937,13 +939,42 @@ static int parse_body(struct game_save *save, struct parser *p)
 	if (parse_offset_table(&p->offsets, p) == -1)
 		return -1;
 
-	for (i = 0u; i < p->offsets.num_globals1 + p->offsets.num_globals2; ++i) {
-		if (parse_global_data(&save->globals, p) == -1) {
+	for (i = 0u; i < p->offsets.num_globals1 + p->offsets.num_globals2; ++i)
+		if (parse_global_data(&save->globals, p) == -1)
 			return -1;
-		}
+
+	save->change_forms = malloc(p->offsets.num_change_form *
+		sizeof(*save->change_forms));
+	if (!save->change_forms) {
+		eprintf("parser: no memory\n");
+		return -1;
 	}
 
-	return 0;
+	for (i = 0u; i < p->offsets.num_change_form; ++i) {
+		rc = parse_change_form(
+			save->change_forms + save->num_change_forms, p);
+		if (rc == -1)
+			return -1;
+		save->num_change_forms++;
+	}
+
+	for (i = 0u; i < p->offsets.num_globals3; ++i)
+		if (parse_global_data(&save->globals, p) == -1)
+			return -1;
+
+	parse_uint_array(&save->form_ids, &save->num_form_ids, p);
+	parse_uint_array(&save->world_spaces, &save->num_world_spaces, p);
+
+	if (parse_u32(&save->unknown3_sz, p) == -1)
+		return -1;
+	printf("unk3 size: %u\n", save->unknown3_sz);
+	save->unknown3 = malloc(save->unknown3_sz * sizeof(*save->unknown3));
+	if (!save->unknown3) {
+		eprintf("parser: no memory\n");
+		return -1;
+	}
+	parser_copy(save->unknown3, save->unknown3_sz, p);
+	return p->eod ? -1 : 0;
 }
 
 static int parse_save_data(void *data, size_t data_sz, struct game_save **out)

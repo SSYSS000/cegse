@@ -59,4 +59,6 @@ typedef u32 ref_t;
  /* Reference is to a created object (not in .esm) */
 #define REF_CREATED(ref_id)	(REF_TYPE(ref_id) == 2u)
 
+#define REF_UNKNOWN(ref_id)	(REF_TYPE(ref_id) == 3u)
+
 #endif // CEGSE_TYPES_H

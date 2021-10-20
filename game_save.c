@@ -55,5 +55,13 @@ void game_save_free(struct game_save *save)
 
 	global_data_free(&save->globals);
 
+	for (i = 0u; i < save->num_change_forms; ++i)
+		free(save->change_forms[i].data);
+	free(save->change_forms);
+
+	free(save->form_ids);
+	free(save->world_spaces);
+	free(save->unknown3);
+
 	free(save);
 }

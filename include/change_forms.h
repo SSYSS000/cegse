@@ -22,6 +22,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef CEGSE_CHANGE_FORMS_H
 #define CEGSE_CHANGE_FORMS_H
 
+#include "types.h"
+
 enum change_form_type {
 	CHANGE_REFR,
 	CHANGE_ACHR,
@@ -158,6 +160,16 @@ enum change_flags {
 	CHANGE_SCENE_ACTIVE				= 0x80000000,
 	CHANGE_BASE_OBJECT_VALUE			= 0x00000002,
 	CHANGE_BASE_OBJECT_FULLNAME			= 0x00000004
+};
+
+struct change_form {
+	ref_t form_id;
+	u32 flags;
+	u32 type;
+	u32 version;
+	u32 length1;
+	u32 length2;
+	unsigned char *data;
 };
 
 #endif /* CEGSE_CHANGE_FORMS_H */

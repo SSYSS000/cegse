@@ -33,6 +33,11 @@ static inline void free_global_vars(struct global_vars *vars)
 	free(vars->vars);
 }
 
+static inline void free_weather(struct weather *w)
+{
+	free(w->data4);
+}
+
 static inline void free_raw_global(struct raw_global *raw)
 {
 	free(raw->data);
@@ -45,8 +50,12 @@ void global_data_free(struct global_data *gdata)
 	free_global_vars(&gdata->global_vars);
 	free_raw_global(&gdata->created_objs);
 	free_raw_global(&gdata->effects);
+	free_weather(&gdata->weather);
 	free_raw_global(&gdata->audio);
 	free_raw_global(&gdata->sky_cells);
+	free_raw_global(&gdata->unknown_9);
+	free_raw_global(&gdata->unknown_10);
+	free_raw_global(&gdata->unknown_11);
 	free_raw_global(&gdata->process_lists);
 	free_raw_global(&gdata->combat);
 	free_raw_global(&gdata->interface);
@@ -62,10 +71,15 @@ void global_data_free(struct global_data *gdata)
 	free_raw_global(&gdata->ingredient_shared);
 	free_raw_global(&gdata->menu_ctrls);
 	free_raw_global(&gdata->menu_topic_man);
+	free_raw_global(&gdata->unknown_115);
+	free_raw_global(&gdata->unknown_116);
+	free_raw_global(&gdata->unknown_117);
 	free_raw_global(&gdata->temp_effects);
 	free_raw_global(&gdata->papyrus);
 	free_raw_global(&gdata->anim_objs);
 	free_raw_global(&gdata->timer);
 	free_raw_global(&gdata->synced_anims);
 	free_raw_global(&gdata->main);
+	free_raw_global(&gdata->unknown_1006);
+	free_raw_global(&gdata->unknown_1007);
 }
