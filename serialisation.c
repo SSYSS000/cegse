@@ -707,7 +707,7 @@ static int parse_global_data(struct global_data *out, struct parser *p)
 
 	RETURN_EOD_IF_SHORT(len, p);
 	start_pos = p->buf_sz;
-	/* printf("type: %u, len: %u\n", type, len); */
+	printf("type: %u, len: %u\n", type, len);
 	switch (type) {
 	case GLOBAL_MISC_STATS:
 		rc = parse_misc_stats(&out->stats, p);
@@ -837,6 +837,54 @@ static int parse_global_data(struct global_data *out, struct parser *p)
 			(unsigned)(len - n_removed));
 		return -1;
 	}
+
+	return 0;
+}
+
+static int parse_change_form(struct parser *p)
+{
+	ref_t form_id;
+	u32 flags;
+	u32 type; /* Upper 2 bits represent the size of data lengths. */
+	u32 length1, length2;
+	u32 version;
+
+	parse_ref_id(&form_id, p);
+	parse_u32(&flags, p);
+	parse_u8(&type, p);
+	parse_u8(&version, p);
+	if (p->eod)
+		return -1;
+	printf("at: %u\n", p->buf_sz);
+	printf("cft: %u\n", type);
+	switch (type & 0x3u) {
+	case 0u:
+		parse_u8(&length1, p);
+		parse_u8(&length2, p);
+		break;
+	case 1u:
+		parse_u16(&length1, p);
+		parse_u16(&length2, p);
+		break;
+	case 2u:
+		parse_u32(&length1, p);
+		parse_u32(&length2, p);
+		break;
+	default:
+		eprintf("parser: impossible change form length type\n");
+		return -1;
+	}
+	if (p->eod)
+		return -1;
+	type >>= 2u;
+	printf("length1: %u\n", length1);
+	if (length2 > 0u) {
+		/* Following data is zlib compressed. */
+		printf("zlib compressed data\n");
+		printf("length2: %u\n", length2);
+	}
+
+	parser_remove(length1, p);
 
 	return 0;
 }
