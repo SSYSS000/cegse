@@ -333,6 +333,35 @@ static int parser_copy(void *dest, u32 n, struct parser *p)
 	return 0;
 }
 
+static void parser_free(struct parser *p)
+{
+	free(p->mem);
+}
+
+static int new_subparser(struct parser *restrict new, u32 com_len, u32 uncom_len,
+	enum compressor method, struct parser *restrict p)
+{
+	RETURN_EOD_IF_SHORT(com_len, p);
+
+	memcpy(new, p, sizeof(*new));
+	new->mem = malloc(uncom_len);
+	if (!new->mem) {
+		eprintf("parser: no memory\n");
+		return -1;
+	}
+
+	if (decompress(p->buf, new->mem, com_len, uncom_len, method) == -1) {
+		parser_free(new);
+		return -1;
+	}
+
+	parser_remove(com_len, p);
+
+	new->buf = new->mem;
+	new->buf_sz = uncom_len;
+	return 0;
+}
+
 static enum game parse_signature(struct parser *p)
 {
 	enum game game = (enum game)-1;
@@ -838,12 +867,43 @@ static int handle_decompression(enum compressor method, struct parser *p)
 	return 0;
 }
 
+static int parse_body(struct game_save *save, struct parser *p)
+{
+	u32 bs, i;
+
+	if (parse_u8(&p->format.revision, p) == -1)
+		return -1;
+	save->file_format = p->format.revision;
+
+	if (p->format.game == FALLOUT4)
+		parse_bstr(save->game_version, sizeof(save->game_version), p);
+
+	parse_u32(&bs, p);
+	parse_bstr_array(&save->plugins, &save->num_plugins, parse_u8, p);
+
+	if (has_light_plugins(&p->format)) {
+		parse_bstr_array(&save->light_plugins, &save->num_light_plugins,
+			parse_u16, p);
+	}
+
+	if (parse_offset_table(&p->offsets, p) == -1)
+		return -1;
+
+	for (i = 0u; i < p->offsets.num_globals1 + p->offsets.num_globals2; ++i) {
+		if (parse_global_data(&save->globals, p) == -1) {
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
 static int parse_save_data(void *data, size_t data_sz, struct game_save **out)
 {
 	struct parser p = {data, data_sz};
 	struct game_save *save = NULL;
 	struct header header;
-	u32 bs, i, num_globals_total;
+	u32 bs;
 
 	if (parse_signature(&p) == (enum game)-1) {
 		eprintf("parser: not a Creation Engine save file\n");
@@ -853,6 +913,7 @@ static int parse_save_data(void *data, size_t data_sz, struct game_save **out)
 	parse_u32(&bs, &p);
 	if (parse_header(&header, &p) == -1)
 		goto out_error;
+
 	if ((save = game_save_new(p.format.game, p.format.engine)) == NULL) {
 		eprintf("parser: cannot allocate memory\n");
 		return -1;
@@ -861,40 +922,35 @@ static int parse_save_data(void *data, size_t data_sz, struct game_save **out)
 
 	if (parse_snapshot(&save->snapshot, &p) == -1)
 		goto out_error;
-	if (handle_decompression(header.compressor, &p) == -1) {
-		goto out_error;
-	}
-	if (parse_u8(&p.format.revision, &p) == -1)
-		goto out_error;
-	save->file_format = p.format.revision;
-	if (p.format.game == FALLOUT4)
-		parse_bstr(save->game_version, sizeof(save->game_version), &p);
 
-	parse_u32(&bs, &p);
-	parse_bstr_array(&save->plugins, &save->num_plugins, parse_u8, &p);
-	if (has_light_plugins(&p.format)) {
-		parse_bstr_array(&save->light_plugins, &save->num_light_plugins,
-			parse_u16, &p);
+	if (can_use_compressor(&p.format)) {
+		struct parser subp;
+		u32 uncom_len;
+		u32 com_len;
+		int rc;
+		parse_u32(&uncom_len, &p);
+		parse_u32(&com_len, &p);
+		if (p.eod)
+			return -1;
+		rc = new_subparser(&subp, com_len, uncom_len,
+			header.compressor, &p);
+		if (rc == -1)
+			return -1;
+		p = subp;
 	}
 
-	if (parse_offset_table(&p.offsets, &p) == -1)
+	if (parse_body(save, &p) == -1)
 		goto out_error;
-
-	for (i = 0u; i < p.offsets.num_globals1 + p.offsets.num_globals2; ++i) {
-		if (parse_global_data(&save->globals, &p) == -1) {
-			goto out_error;
-		}
-	}
 
 	*out = save;
-	free(p.mem);
+	parser_free(&p);
 	return 0;
 out_error:
 	if (p.eod)
 		eprintf("parser: save file too short\n");
 	if (save)
 		game_save_free(save);
-	free(p.mem);
+	parser_free(&p);
 	return -1;
 }
 
