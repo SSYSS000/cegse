@@ -21,10 +21,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <errno.h>
 #include <lz4.h>
+#include <zlib.h>
 #include "compression.h"
 #include "defines.h"
 
-int compress(const void *src, void *dest, int src_size, int dest_size,
+int cegse_compress(const void *src, void *dest, int src_size, int dest_size,
 	enum compressor method)
 {
 	int comp_size = 0;
@@ -49,20 +50,29 @@ int compress(const void *src, void *dest, int src_size, int dest_size,
 	return comp_size;
 }
 
-int decompress(const void *src, void *dest, int src_size, int dest_size,
+int cegse_decompress(const void *src, void *dest, int src_size, int dest_size,
 	enum compressor method)
 {
+	uLongf zdest_len = dest_size;
+	int rc;
+
 	switch (method) {
 	case COMPRESS_NONE:
-		break;
-	case COMPRESS_ZLIB:
-		errno = ENOSYS;
-		perror("cannot zlib decompress");
+		eprintf("COMPRESS_NONE passed to decompress()\n");
 		return -1;
 
+	case COMPRESS_ZLIB:
+		rc = uncompress(dest, &zdest_len, src, src_size);
+		if (rc != Z_OK) {
+			eprintf("zlib: failed to decompress\n");
+			return -1;
+		}
+		break;
+
 	case COMPRESS_LZ4:
-		if (LZ4_decompress_safe(src, dest, src_size, dest_size) < 0) {
-			eprintf("compress data malformed");
+		rc = LZ4_decompress_safe(src, dest, src_size, dest_size);
+		if (rc < 0) {
+			eprintf("lz4: compress data malformed\n");
 			return -1;
 		}
 		break;

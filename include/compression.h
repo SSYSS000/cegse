@@ -28,10 +28,10 @@ enum compressor {
 	COMPRESS_LZ4,
 };
 
-int compress(const void *src, void *dest, int src_size, int dest_size,
+int cegse_compress(const void *src, void *dest, int src_size, int dest_size,
 	enum compressor method);
 
-int decompress(const void *src, void *dest, int src_size, int dest_size,
+int cegse_decompress(const void *src, void *dest, int src_size, int dest_size,
 	enum compressor method);
 
 #endif /* CEGSE_COMPRESSION_H */

@@ -1,5 +1,5 @@
 CFLAGS = -Iinclude -Wall -Wextra -g -DDEBUGGING=1
-LIBS = -llz4
+LIBS = -llz4 -lz
 
 OBJS = 	snapshot.o \
 	game_save.o \
