@@ -546,8 +546,9 @@ static int parse_header(struct parser *p)
 	return p->eod ? -1 : 0;
 }
 
-static int parse_offset_table(struct offset_table *table, struct parser *p)
+static int parse_offset_table(struct parser *p)
 {
+	struct offset_table *table = &p->ctx->offsets;
 	parse_u32(&table->off_form_ids_count, p);
 	parse_u32(&table->off_unknown_table, p);
 	parse_u32(&table->off_globals1, p);
@@ -969,7 +970,7 @@ static int parse_body(struct game_save *save, struct parser *p)
 			parse_u16, p);
 	}
 
-	if (parse_offset_table(&p->ctx->offsets, p) == -1)
+	if (parse_offset_table(p) == -1)
 		return -1;
 
 	next_len = p->ctx->offsets.num_globals1 + p->ctx->offsets.num_globals2;
