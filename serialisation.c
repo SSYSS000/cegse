@@ -38,13 +38,16 @@ struct offset_table {
 	u32 num_change_form;
 };
 
-struct serialise_format {
-	enum game game;
-	u32 engine;
+struct file_context {
+	struct header header;
+	struct offset_table offsets;
+	enum game *game;	/* points to header.game */
+	u32 *engine;		/* points to header.engine */
 	u32 revision;
 };
 
 struct serialiser {
+	struct file_context *ctx;
 	/*
 	 * buf points to one byte past the end of the last serialised item.
 	 * Set to NULL to find the required minimum buf size of
@@ -52,19 +55,15 @@ struct serialiser {
 	 */
 	void *buf;
 	size_t n_written;
-	struct serialise_format format;
-	struct offset_table offsets;
 };
 
 struct parser {
+	struct file_context *ctx;
+
 	const void *buf;	/* Data being parsed */
 	size_t buf_sz;		/* Size of buf */
+	size_t offset;		/* File offset */
 	void *mem;		/* Memory mallocated during parsing */
-	struct serialise_format format;
-	struct offset_table offsets;
-
-	unsigned snapshot_width;
-	unsigned snapshot_height;
 
 	/*
 	 * End of data condition.
@@ -79,42 +78,55 @@ static const char skyrim_signature[] =
 static const char fallout4_signature[] =
 {'F','O','4','_','S','A','V','E','G','A','M','E'};
 
+static void init_blank_file_ctx(struct file_context *ctx)
+{
+	memset(ctx, 0, sizeof(*ctx));
+	ctx->game = &ctx->header.game;
+	ctx->engine = &ctx->header.engine;
+}
+
+static void init_file_ctx(struct game_save *save, struct file_context *ctx)
+{
+	init_blank_file_ctx(ctx);
+	/* insert logic here */
+}
+
 /*
  * Check if edition is Skyrim Special Edition.
  */
-static inline bool is_skse(const struct serialise_format *f)
+static inline bool is_skse(const struct file_context *f)
 {
-	return f->game == SKYRIM && f->engine == 12u;
+	return *f->game == SKYRIM && *f->engine == 12u;
 }
 
 /*
  * Check if edition is Skyrim Legendary Edition.
  */
-static inline bool is_skle(const struct serialise_format *f)
+static inline bool is_skle(const struct file_context *f)
 {
-	return f->game == SKYRIM && 7u <= f->engine && f->engine <= 9u;
+	return *f->game == SKYRIM && 7u <= *f->engine && *f->engine <= 9u;
 }
 
 /*
  * Check if a save file is expected to be compressed.
  */
-static inline bool can_use_compressor(const struct serialise_format *f)
+static inline bool can_use_compressor(const struct file_context *f)
 {
 	return is_skse(f);
 }
 
-static inline bool has_light_plugins(const struct serialise_format *f)
+static inline bool has_light_plugins(const struct file_context *f)
 {
-	return f->game == FALLOUT4 || (is_skse(f) && f->revision >= 78u);
+	return *f->game == FALLOUT4 || (is_skse(f) && f->revision >= 78u);
 }
 
 /*
  * Find out what type of snapshot pixel format the engine uses
  * and return it.
  */
-static enum pixel_format which_snapshot_format(const struct serialise_format *f)
+static enum pixel_format which_snapshot_format(const struct file_context *f)
 {
-	if (f->engine >= 11u)
+	if (*f->engine >= 11u)
 		return PXFMT_RGBA;
 
 	return PXFMT_RGB;
@@ -260,7 +272,7 @@ static void serialise_header(const struct header *header, struct serialiser *s)
 	serialise_filetime(header->filetime, s);
 	serialise_u32(header->snapshot_width, s);
 	serialise_u32(header->snapshot_height, s);
-	if (can_use_compressor(&s->format))
+	if (can_use_compressor(s->ctx))
 		serialise_u16(header->compressor, s);
 }
 
@@ -321,11 +333,21 @@ static void serialise_snapshot(const struct snapshot *snapshot, struct serialise
 	}									\
 } while (0)
 
+void init_parser(const void *buf, size_t buf_sz, struct file_context *ctx,
+	struct parser *p)
+{
+	memset(p, 0, sizeof(*p));
+	p->buf = buf;
+	p->buf_sz = buf_sz;
+	p->ctx = ctx;
+}
+
 static inline void parser_remove(size_t n, struct parser *p)
 {
 	n = MIN(n, p->buf_sz);
 	p->buf = (const char *)p->buf + n;
 	p->buf_sz -= n;
+	p->offset += n;
 }
 
 static int parser_copy(void *dest, u32 n, struct parser *p)
@@ -383,7 +405,7 @@ static enum game parse_signature(struct parser *p)
 		game = FALLOUT4;
 		parser_remove(sizeof(fallout4_signature), p);
 	}
-	p->format.game = game;
+	*p->ctx->game = game;
 	return game;
 }
 
@@ -490,9 +512,9 @@ static int parse_bstr_m(char **string, struct parser *p)
 	return len;
 }
 
-static int parse_header(struct header *header, struct parser *p)
+static int parse_header(struct parser *p)
 {
-	header->game = p->format.game;
+	struct header *header = &p->ctx->header;
 	parse_u32(&header->engine, p);
 	parse_u32(&header->save_num, p);
 	parse_bstr(header->ply_name, sizeof(header->ply_name), p);
@@ -508,10 +530,7 @@ static int parse_header(struct header *header, struct parser *p)
 	parse_u32(&header->snapshot_height, p);
 	if (p->eod)
 		return -1;
-	p->snapshot_width = header->snapshot_width;
-	p->snapshot_height = header->snapshot_height;
-	p->format.engine = header->engine;
-	if (can_use_compressor(&p->format))
+	if (can_use_compressor(p->ctx))
 		parse_u16(&header->compressor, p);
 	return p->eod ? -1 : 0;
 }
@@ -582,8 +601,9 @@ static int parse_snapshot(struct snapshot **snapshot, struct parser *p)
 	enum pixel_format px_format;
 	unsigned shot_sz;
 
-	px_format = which_snapshot_format(&p->format);
-	*snapshot = snapshot_new(px_format, p->snapshot_width, p->snapshot_height);
+	px_format = which_snapshot_format(p->ctx);
+	*snapshot = snapshot_new(px_format,
+		p->ctx->header.snapshot_width, p->ctx->header.snapshot_height);
 	if (!*snapshot)
 		return -1;
 
@@ -645,7 +665,7 @@ static int parse_player_location(struct player_location *pl, struct parser *p)
 	parse_f32(&pl->pos_x, p);
 	parse_f32(&pl->pos_y, p);
 	parse_f32(&pl->pos_z, p);
-	if (p->format.game == SKYRIM)
+	if (*p->ctx->game == SKYRIM)
 		parse_u8(&pl->unknown, p);
 	return p->eod ? -1 : 0;
 }
@@ -859,7 +879,7 @@ static int parse_change_form(struct change_form *cf, struct parser *p)
 	if (p->eod)
 		return -1;
 
-	printf("change form: %u\n", cf->type);
+	printf("change form: %u at offset 0x%zx\n", cf->type, p->offset);
 
 	switch (cf->type >> 6) {
 	case 0u:
@@ -901,7 +921,6 @@ static int parse_uint_array(u32 **array, u32 *len, struct parser *p)
 
 	if (parse_u32(&llen, p) == -1)
 		return -1;
-	printf("uint array len: %u\n", llen);
 
 	larray = malloc(llen * sizeof(*larray));
 	if (!larray) {
@@ -921,39 +940,39 @@ static int parse_uint_array(u32 **array, u32 *len, struct parser *p)
 
 static int parse_body(struct game_save *save, struct parser *p)
 {
-	u32 bs, i;
+	u32 next_len, i;
 	int rc;
 
-	if (parse_u8(&p->format.revision, p) == -1)
+	if (parse_u8(&p->ctx->revision, p) == -1)
 		return -1;
-	save->file_format = p->format.revision;
+	save->file_format = p->ctx->revision;
 
-	if (p->format.game == FALLOUT4)
+	if (*p->ctx->game == FALLOUT4)
 		parse_bstr(save->game_version, sizeof(save->game_version), p);
 
-	parse_u32(&bs, p);
+	parse_u32(&next_len, p);
 	parse_bstr_array(&save->plugins, &save->num_plugins, parse_u8, p);
 
-	if (has_light_plugins(&p->format)) {
+	if (has_light_plugins(p->ctx)) {
 		parse_bstr_array(&save->light_plugins, &save->num_light_plugins,
 			parse_u16, p);
 	}
 
-	if (parse_offset_table(&p->offsets, p) == -1)
+	if (parse_offset_table(&p->ctx->offsets, p) == -1)
 		return -1;
 
-	for (i = 0u; i < p->offsets.num_globals1 + p->offsets.num_globals2; ++i)
+	next_len = p->ctx->offsets.num_globals1 + p->ctx->offsets.num_globals2;
+	for (i = 0u; i < next_len; ++i)
 		if (parse_global_data(&save->globals, p) == -1)
 			return -1;
 
-	save->change_forms = malloc(p->offsets.num_change_form *
-		sizeof(*save->change_forms));
+	next_len = p->ctx->offsets.num_change_form;
+	save->change_forms = malloc(next_len * sizeof(*save->change_forms));
 	if (!save->change_forms) {
 		eprintf("parser: no memory\n");
 		return -1;
 	}
-
-	for (i = 0u; i < p->offsets.num_change_form; ++i) {
+	for (i = 0u; i < next_len; ++i) {
 		rc = parse_change_form(
 			save->change_forms + save->num_change_forms, p);
 		if (rc == -1)
@@ -961,7 +980,7 @@ static int parse_body(struct game_save *save, struct parser *p)
 		save->num_change_forms++;
 	}
 
-	for (i = 0u; i < p->offsets.num_globals3; ++i)
+	for (i = 0u; i < p->ctx->offsets.num_globals3; ++i)
 		if (parse_global_data(&save->globals, p) == -1)
 			return -1;
 
@@ -982,10 +1001,13 @@ static int parse_body(struct game_save *save, struct parser *p)
 
 static int parse_save_data(void *data, size_t data_sz, struct game_save **out)
 {
-	struct parser p = {data, data_sz};
+	struct file_context ctx;
 	struct game_save *save = NULL;
-	struct header header;
+	struct parser p;
 	u32 bs;
+
+	init_blank_file_ctx(&ctx);
+	init_parser(data, data_sz, &ctx, &p);
 
 	if (parse_signature(&p) == (enum game)-1) {
 		eprintf("parser: not a Creation Engine save file\n");
@@ -993,19 +1015,19 @@ static int parse_save_data(void *data, size_t data_sz, struct game_save **out)
 	}
 
 	parse_u32(&bs, &p);
-	if (parse_header(&header, &p) == -1)
+	if (parse_header(&p) == -1)
 		goto out_error;
 
-	if ((save = game_save_new(p.format.game, p.format.engine)) == NULL) {
+	if ((save = game_save_new(*p.ctx->game, *p.ctx->engine)) == NULL) {
 		eprintf("parser: no memory\n");
 		goto out_error;
 	}
-	save->time_saved = filetime_to_time(header.filetime);
+	save->time_saved = filetime_to_time(p.ctx->header.filetime);
 
 	if (parse_snapshot(&save->snapshot, &p) == -1)
 		goto out_error;
 
-	if (can_use_compressor(&p.format)) {
+	if (can_use_compressor(p.ctx)) {
 		struct parser subp;
 		u32 uncom_len;
 		u32 com_len;
@@ -1015,7 +1037,7 @@ static int parse_save_data(void *data, size_t data_sz, struct game_save **out)
 		if (p.eod)
 			goto out_error;
 		rc = new_subparser(&subp, com_len, uncom_len,
-			header.compressor, &p);
+			p.ctx->header.compressor, &p);
 		if (rc == -1)
 			goto out_error;
 		p = subp;
@@ -1038,7 +1060,8 @@ out_error:
 
 int parse_file_header_only(int fd, struct header *header)
 {
-	struct parser p = {0};
+	struct file_context ctx;
+	struct parser p;
 	char buf[1024];
 	u32 header_sz;
 	int in_len;
@@ -1048,8 +1071,8 @@ int parse_file_header_only(int fd, struct header *header)
 		return -1;
 	}
 
-	p.buf = buf;
-	p.buf_sz = in_len;
+	init_blank_file_ctx(&ctx);
+	init_parser(buf, in_len, &ctx, &p);
 
 	if (parse_signature(&p) == (enum game)-1) {
 		eprintf("parser: not a Creation Engine save file\n");
@@ -1057,11 +1080,12 @@ int parse_file_header_only(int fd, struct header *header)
 	}
 
 	parse_u32(&header_sz, &p);
-
-	if (parse_header(header, &p) == -1) {
+	if (parse_header(&p) == -1) {
 		eprintf("parser: save file too short\n");
 		return -1;
 	}
+
+	*header = p.ctx->header;
 
 	return 0;
 }
