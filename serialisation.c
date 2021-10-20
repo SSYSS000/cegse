@@ -73,8 +73,11 @@ struct parser {
 	unsigned eod;
 };
 
-static const char skyrim_signature[] = {'T','E','S','V','_','S','A','V','E','G','A','M','E'};
-static const char fallout4_signature[] = {'F','O','4','_','S','A','V','E','G','A','M','E'};
+static const char skyrim_signature[] =
+{'T','E','S','V','_','S','A','V','E','G','A','M','E'};
+
+static const char fallout4_signature[] =
+{'F','O','4','_','S','A','V','E','G','A','M','E'};
 
 /*
  * Check if edition is Skyrim Special Edition.
