@@ -81,13 +81,10 @@ struct game_save {
 /*
  * Create a game save.
  *
- * engine_version specifies the Creation Engine version
- * of the game specified by game_title.
- *
  * Return a pointer to an initialized game save or
  * return NULL if memory allocation fails.
  */
-struct game_save* game_save_new(enum game game, u32 engine);
+struct game_save* game_save_new(void);
 
 /*
  * Destroy a game save, freeing its held resources.

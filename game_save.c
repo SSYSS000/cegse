@@ -27,15 +27,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "defines.h"
 #include "game_save.h"
 
-struct game_save* game_save_new(enum game game, u32 engine)
+struct game_save* game_save_new(void)
 {
-	struct game_save *save = calloc(1, sizeof(*save));
-	if (!save)
-		return NULL;
-
-	save->game = game;
-	save->engine = engine;
-	return save;
+	return calloc(1, sizeof(struct game_save));
 }
 
 void game_save_free(struct game_save *save)

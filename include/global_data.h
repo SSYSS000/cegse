@@ -195,15 +195,15 @@ struct global_data {
 	struct raw_global combat;
 	struct raw_global interface;
 	struct raw_global actor_causes;
-	struct raw_global unknown_104;
+	struct raw_global unknown_104;	/* Skyrim */
 	struct raw_global detection_man;
 	struct raw_global location_meta;
 	struct raw_global quest_static; /* Skyrim */
-	struct raw_global story_teller;
+	struct raw_global story_teller; /* Skyrim */
 	struct raw_global magic_favs;
 	struct raw_global player_ctrls;
 	struct raw_global story_event_man;
-	struct raw_global ingredient_shared;
+	struct raw_global ingredient_shared; /* Skyrim */
 	struct raw_global menu_ctrls;
 	struct raw_global menu_topic_man;
 	struct raw_global unknown_115; /* Fallout 4 */

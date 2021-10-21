@@ -164,6 +164,16 @@ static inline FILETIME time_to_filetime(time_t t)
 	return (FILETIME)(t + 11644473600) * 10000000;
 }
 
+static void print_offset_table(const struct offset_table *t)
+{
+	eprintf("%08x: Globals 1 (%u)\n", t->off_globals1, t->num_globals1);
+	eprintf("%08x: Globals 2 (%u)\n", t->off_globals2, t->num_globals2);
+	eprintf("%08x: Change forms (%u)\n", t->off_change_forms, t->num_change_form);
+	eprintf("%08x: Globals 3 (%u)\n", t->off_globals3, t->num_globals3);
+	eprintf("%08x: Form IDs\n", t->off_form_ids_count);
+	eprintf("%08x: Unknown table\n", t->off_unknown_table);
+}
+
 static void init_blank_file_ctx(struct file_context *ctx)
 {
 	memset(ctx, 0, sizeof(*ctx));
@@ -177,6 +187,11 @@ static void init_file_ctx(const struct game_save *save, struct file_context *ctx
 	*ctx->game = save->game;
 	*ctx->engine = save->engine;
 	ctx->revision = save->file_format;
+	ctx->header.save_num = save->save_num;
+	ctx->header.level = save->level;
+	ctx->header.sex = save->sex;
+	ctx->header.current_xp = save->current_xp;
+	ctx->header.target_xp = save->target_xp;
 	ctx->header.filetime = time_to_filetime(save->time_saved);
 	ctx->header.snapshot_width = save->snapshot->width;
 	ctx->header.snapshot_height = save->snapshot->height;
@@ -187,14 +202,14 @@ static void init_file_ctx(const struct game_save *save, struct file_context *ctx
 
 	switch (save->game) {
 	case SKYRIM:
-		ctx->offsets.num_globals1 = 8;
+		ctx->offsets.num_globals1 = 9;
 		ctx->offsets.num_globals2 = 14;
 		ctx->offsets.num_globals3 = 5;
 		break;
 	case FALLOUT4:
-		ctx->offsets.num_globals1 = 11;
-		ctx->offsets.num_globals2 = 16;
-		ctx->offsets.num_globals3 = 7;
+		ctx->offsets.num_globals1 = 12;
+		ctx->offsets.num_globals2 = 14;
+		ctx->offsets.num_globals3 = 8;
 		break;
 	}
 
@@ -202,6 +217,15 @@ static void init_file_ctx(const struct game_save *save, struct file_context *ctx
 
 	if (can_use_compressor(ctx))
 		ctx->header.compressor = COMPRESS_LZ4;
+}
+
+static void init_serialiser(void *data, size_t file_offset,
+	struct file_context *ctx, struct serialiser *s)
+{
+	memset(s, 0, sizeof(*s));
+	s->buf = data;
+	s->offset = file_offset;
+	s->ctx = ctx;
 }
 
 static inline void serialiser_add(ssize_t n, struct serialiser *s)
@@ -361,22 +385,30 @@ static void serialise_offset_table(struct serialiser *s)
 	serialiser_add(sizeof(u32[15]), s);
 }
 
-static void serialise_plugins(const char **plugins, u32 count,
+static void serialise_plugins(char ** const plugins, u32 count,
 	struct serialiser *s)
 {
-	size_t plugs_start;
+	ssize_t off_start, off_end;
 	u32 i;
 
-	plugs_start = start_variable_length_block(s);
+	serialise_u32(0u, s);
+	off_start = s->offset;
 
 	serialise_u8(count, s);
 	for (i = 0u; i < count; ++i)
 		serialise_bstr(plugins[i], s);
 
-	end_variable_length_block(plugs_start, s);
+	off_end = s->offset;
+	serialiser_add(off_start - off_end - sizeof(u32), s);
+	/*
+	 * idk what is going on, but Bethesda likes to add 2 to the actual
+	 * size of plugin info.
+	 */
+	serialise_u32(off_end - off_start + 2, s);
+	serialiser_add(off_end - off_start, s);
 }
 
-static void serialise_light_plugins(const char **plugins, u32 count,
+static void serialise_light_plugins(char ** const plugins, u32 count,
 	struct serialiser *s)
 {
 	u32 i;
@@ -453,7 +485,7 @@ static void serialise_global_vars(const struct global_vars *v, struct serialiser
 {
 	u32 i;
 
-	serialise_u32(v->count, s);
+	serialise_vsval(v->count, s);
 	for (i = 0u; i < v->count; ++i) {
 		serialise_ref_id(v->vars[i].form_id, s);
 		serialise_f32(v->vars[i].value, s);
@@ -467,6 +499,8 @@ static void serialise_global_data(const struct global_data *g,
 
 	serialise_u32(type, s);
 	bs = start_variable_length_block(s);
+
+	printf("%08x: s global type %u\n", (unsigned)s->offset, type);
 
 	switch (type) {
 	case GLOBAL_MISC_STATS:
@@ -615,16 +649,19 @@ static void serialise_globals2(const struct global_data *g, struct serialiser *s
 	serialise_global_data(g, GLOBAL_COMBAT, s);
 	serialise_global_data(g, GLOBAL_INTERFACE, s);
 	serialise_global_data(g, GLOBAL_ACTOR_CAUSES, s);
-	serialise_global_data(g, GLOBAL_UNKNOWN_104, s);
+	if (*s->ctx->game == SKYRIM)
+		serialise_global_data(g, GLOBAL_UNKNOWN_104, s);
 	serialise_global_data(g, GLOBAL_DETECTION_MANAGER, s);
 	serialise_global_data(g, GLOBAL_LOCATION_METADATA, s);
-	if (*s->ctx->game == SKYRIM)
+	if (*s->ctx->game == SKYRIM) {
 		serialise_global_data(g, GLOBAL_QUEST_STATIC_DATA, s);
-	serialise_global_data(g, GLOBAL_STORYTELLER, s);
+		serialise_global_data(g, GLOBAL_STORYTELLER, s);
+	}
 	serialise_global_data(g, GLOBAL_MAGIC_FAVORITES, s);
 	serialise_global_data(g, GLOBAL_PLAYER_CONTROLS, s);
 	serialise_global_data(g, GLOBAL_STORY_EVENT_MANAGER, s);
-	serialise_global_data(g, GLOBAL_INGREDIENT_SHARED, s);
+	if (*s->ctx->game == SKYRIM)
+		serialise_global_data(g, GLOBAL_INGREDIENT_SHARED, s);
 	serialise_global_data(g, GLOBAL_MENU_CONTROLS, s);
 	serialise_global_data(g, GLOBAL_MENU_TOPIC_MANAGER, s);
 
@@ -717,6 +754,14 @@ static int serialise_body(const struct game_save *save, struct serialiser *s)
 	s->ctx->offsets.off_unknown_table = s->offset;
 	serialise_u32(save->unknown3_sz, s);
 	serialiser_copy(save->unknown3, save->unknown3_sz, s);
+
+	struct serialiser ots;
+	init_serialiser(
+		s->buf ? ((char*)s->buf - (s->offset - off_offset_table)) : NULL,
+		off_offset_table, s->ctx, &ots);
+
+	serialise_offset_table(&ots);
+
 	return 0;
 }
 
@@ -732,15 +777,6 @@ static void serialise_signature(struct serialiser *s)
 			sizeof(fallout4_signature), s);
 		break;
 	}
-}
-
-static void init_serialiser(void *data, size_t file_offset,
-	struct file_context *ctx, struct serialiser *s)
-{
-	memset(s, 0, sizeof(*s));
-	s->buf = data;
-	s->offset = file_offset;
-	s->ctx = ctx;
 }
 
 static int serialise_save_data(const struct game_save *save,
@@ -828,19 +864,17 @@ int serialise_to_disk(int fd, const struct game_save *save)
 		return -1;
 	}
 
-	buffer = mmap(NULL, serialised_len, PROT_WRITE, MAP_PRIVATE, fd, 0);
+	buffer = mmap(NULL, serialised_len, PROT_WRITE, MAP_SHARED, fd, 0);
 	if (buffer == MAP_FAILED) {
 		perror("serialiser: cannot mmap file");
 		return -1;
 	}
 
-	serialise_to_buffer(buffer, save);
-
-	if (msync(buffer, serialised_len, MS_SYNC) == -1) {
-		perror("serialiser: cannot write to file");
+	if (serialise_to_buffer(buffer, save) == -1) {
 		munmap(buffer, serialised_len);
 		return -1;
 	}
+
 	munmap(buffer, serialised_len);
 	return 0;
 }
@@ -1171,6 +1205,7 @@ static int parse_global_vars(struct global_vars *vars, struct parser *p)
 		eprintf("parser: no memory\n");
 		return -1;
 	}
+	vars->count = count;
 
 	for (i = 0u; i < count; ++i) {
 		parse_ref_id(&vars->vars[i].form_id, p);
@@ -1197,7 +1232,7 @@ static int parse_player_location(struct player_location *pl, struct parser *p)
 
 static int parse_weather(struct weather *w, u32 len, struct parser *p)
 {
-	size_t start = p->buf_sz;
+	size_t start = p->offset;
 	u32 i;
 
 	parse_ref_id(&w->climate, p);
@@ -1219,13 +1254,13 @@ static int parse_weather(struct weather *w, u32 len, struct parser *p)
 	if (p->eod)
 		return -1;
 
-	w->data4_sz = len - (start - p->buf_sz);
+	w->data4_sz = len - (p->offset - start);
 	w->data4 = malloc(w->data4_sz);
 	if (!w->data4) {
 		eprintf("parser: no memory\n");
 		return -1;
 	}
-	printf("data4 at %zu\n", p->buf_sz);
+
 	parser_copy(w->data4, w->data4_sz, p);
 
 	return p->eod ? -1 : 0;
@@ -1254,8 +1289,8 @@ static int parse_global_data(struct global_data *out, struct parser *p)
 		return -1;
 
 	RETURN_EOD_IF_SHORT(len, p);
-	start_pos = p->buf_sz;
-	printf("global: %u\n", type);
+	start_pos = p->offset;
+	printf("%08x: global type %u\n", (unsigned)p->offset, type);
 	switch (type) {
 	case GLOBAL_MISC_STATS:
 		rc = parse_misc_stats(&out->stats, p);
@@ -1379,7 +1414,7 @@ static int parse_global_data(struct global_data *out, struct parser *p)
 	if (rc == -1)
 		return -1;
 
-	n_removed = start_pos - p->buf_sz;
+	n_removed = p->offset - start_pos;
 
 	if (n_removed > len) {
 		eprintf("parser: global data: read %u more than should have\n",
@@ -1403,8 +1438,6 @@ static int parse_change_form(struct change_form *cf, struct parser *p)
 	parse_u8(&cf->version, p);
 	if (p->eod)
 		return -1;
-
-	printf("change form: %u at offset 0x%zx\n", cf->type, p->offset);
 
 	switch (cf->type >> 6) {
 	case 0u:
@@ -1487,6 +1520,7 @@ static int parse_body(struct game_save *save, struct parser *p)
 
 	if (parse_offset_table(p) == -1)
 		return -1;
+	print_offset_table(&p->ctx->offsets);
 
 	next_len = p->ctx->offsets.num_globals1 + p->ctx->offsets.num_globals2;
 	for (i = 0u; i < next_len; ++i)
@@ -1511,12 +1545,13 @@ static int parse_body(struct game_save *save, struct parser *p)
 		if (parse_global_data(&save->globals, p) == -1)
 			return -1;
 
-	parse_uint_array(&save->form_ids, &save->num_form_ids, p);
-	parse_uint_array(&save->world_spaces, &save->num_world_spaces, p);
-
+	if (parse_uint_array(&save->form_ids, &save->num_form_ids, p) == -1)
+		return -1;
+	if (parse_uint_array(&save->world_spaces, &save->num_world_spaces, p) == -1)
+		return -1;
 	if (parse_u32(&save->unknown3_sz, p) == -1)
 		return -1;
-	printf("unk3 size: %u\n", save->unknown3_sz);
+
 	save->unknown3 = malloc(save->unknown3_sz * sizeof(*save->unknown3));
 	if (!save->unknown3) {
 		eprintf("parser: no memory\n");
@@ -1526,10 +1561,9 @@ static int parse_body(struct game_save *save, struct parser *p)
 	return p->eod ? -1 : 0;
 }
 
-static int parse_save_data(void *data, size_t data_sz, struct game_save **out)
+static int parse_save_data(void *data, size_t data_sz, struct game_save *save)
 {
 	struct file_context ctx;
-	struct game_save *save = NULL;
 	struct parser p;
 	u32 bs;
 
@@ -1544,12 +1578,18 @@ static int parse_save_data(void *data, size_t data_sz, struct game_save **out)
 	parse_u32(&bs, &p);
 	if (parse_header(&p) == -1)
 		goto out_error;
-
-	if ((save = game_save_new(*p.ctx->game, *p.ctx->engine)) == NULL) {
-		eprintf("parser: no memory\n");
-		goto out_error;
-	}
+	save->game = *ctx.game;
+	save->engine = *ctx.engine;
+	save->save_num = ctx.header.save_num;
+	save->level = ctx.header.level;
+	save->sex = ctx.header.sex;
+	save->current_xp = ctx.header.current_xp;
+	save->target_xp = ctx.header.target_xp;
 	save->time_saved = filetime_to_time(p.ctx->header.filetime);
+	strcpy(save->ply_name, ctx.header.ply_name);
+	strcpy(save->location, ctx.header.location);
+	strcpy(save->game_time, ctx.header.game_time);
+	strcpy(save->race_id, ctx.header.race_id);
 
 	if (parse_snapshot(&save->snapshot, &p) == -1)
 		goto out_error;
@@ -1572,8 +1612,6 @@ static int parse_save_data(void *data, size_t data_sz, struct game_save **out)
 
 	if (parse_body(save, &p) == -1)
 		goto out_error;
-
-	*out = save;
 	parser_free(&p);
 	return 0;
 out_error:
@@ -1617,7 +1655,7 @@ int parse_file_header_only(int fd, struct header *header)
 	return 0;
 }
 
-static int parse_file_from_pipe(int fd, struct game_save **out)
+static int parse_file_from_pipe(int fd, struct game_save *out)
 {
 	size_t block = 10u * 1024u * 1024u;
 	int in_length, total_read = 0;
@@ -1656,7 +1694,7 @@ static int parse_file_from_pipe(int fd, struct game_save **out)
 	return 0;
 }
 
-static int parse_file_from_disk(int fd, off_t size, struct game_save **out)
+static int parse_file_from_disk(int fd, off_t size, struct game_save *out)
 {
 	void *contents;
 	int rc;
@@ -1672,7 +1710,7 @@ static int parse_file_from_disk(int fd, off_t size, struct game_save **out)
 	return rc;
 }
 
-int parse_file(int fd, struct game_save **out)
+int parse_file(int fd, struct game_save *out)
 {
 	struct stat stat;
 	int rc;
