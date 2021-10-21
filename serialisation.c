@@ -74,8 +74,9 @@ struct serialiser {
 	 * Set to NULL to find the required minimum buf size of
 	 * serialisation. Refer to n_written for the size.
 	 */
-	void *buf;
-	size_t n_written;
+	void *buf;		/* Pointer to the next item */
+	size_t n_written;	/* Bytes written */
+	size_t offset;		/* File offset */
 };
 
 struct parser {
@@ -104,19 +105,6 @@ static const char skyrim_signature[] =
 
 static const char fallout4_signature[] =
 {'F','O','4','_','S','A','V','E','G','A','M','E'};
-
-static void init_blank_file_ctx(struct file_context *ctx)
-{
-	memset(ctx, 0, sizeof(*ctx));
-	ctx->game = &ctx->header.game;
-	ctx->engine = &ctx->header.engine;
-}
-
-static void init_file_ctx(struct game_save *save, struct file_context *ctx)
-{
-	init_blank_file_ctx(ctx);
-	/* insert logic here */
-}
 
 /*
  * Check if edition is Skyrim Special Edition.
@@ -176,11 +164,59 @@ static inline FILETIME time_to_filetime(time_t t)
 	return (FILETIME)(t + 11644473600) * 10000000;
 }
 
-static inline void serialiser_add(size_t n, struct serialiser *s)
+static void init_blank_file_ctx(struct file_context *ctx)
+{
+	memset(ctx, 0, sizeof(*ctx));
+	ctx->game = &ctx->header.game;
+	ctx->engine = &ctx->header.engine;
+}
+
+static void init_file_ctx(const struct game_save *save, struct file_context *ctx)
+{
+	init_blank_file_ctx(ctx);
+	*ctx->game = save->game;
+	*ctx->engine = save->engine;
+	ctx->revision = save->file_format;
+	ctx->header.filetime = time_to_filetime(save->time_saved);
+	ctx->header.snapshot_width = save->snapshot->width;
+	ctx->header.snapshot_height = save->snapshot->height;
+	strcpy(ctx->header.ply_name, save->ply_name);
+	strcpy(ctx->header.location, save->location);
+	strcpy(ctx->header.game_time, save->game_time);
+	strcpy(ctx->header.race_id, save->race_id);
+
+	switch (save->game) {
+	case SKYRIM:
+		ctx->offsets.num_globals1 = 8;
+		ctx->offsets.num_globals2 = 14;
+		ctx->offsets.num_globals3 = 5;
+		break;
+	case FALLOUT4:
+		ctx->offsets.num_globals1 = 11;
+		ctx->offsets.num_globals2 = 16;
+		ctx->offsets.num_globals3 = 7;
+		break;
+	}
+
+	ctx->offsets.num_change_form = save->num_change_forms;
+
+	if (can_use_compressor(ctx))
+		ctx->header.compressor = COMPRESS_LZ4;
+}
+
+static inline void serialiser_add(ssize_t n, struct serialiser *s)
 {
 	if (s->buf)
 		s->buf = (char *)s->buf + n;
 	s->n_written += n;
+	s->offset += n;
+}
+
+static void serialiser_copy(const void *data, size_t len, struct serialiser *s)
+{
+	if (s->buf)
+		memcpy(s->buf, data, len);
+	serialiser_add(len, s);
 }
 
 static void serialise_u8(u32 value, struct serialiser *s)
@@ -250,10 +286,19 @@ static void serialise_vsval(u32 value, struct serialiser *s)
 	serialiser_add(hibytes + 1, s);
 }
 
+static void serialise_ref_id(u32 ref_id, struct serialiser *s)
+{
+	u8 bytes[3];
+	bytes[0] = ref_id;
+	bytes[1] = ref_id >> 8;
+	bytes[2] = ref_id >> 16;
+	serialiser_copy(bytes, sizeof(bytes), s);
+}
+
 static void serialise_bstr(const char *str, struct serialiser *s)
 {
 	u16 len = strlen(str);
-	serialise_u16(len, s->buf);
+	serialise_u16(len, s);
 	if (s->buf)
 		memcpy(s->buf, str, len);
 	serialiser_add(len, s);
@@ -262,30 +307,25 @@ static void serialise_bstr(const char *str, struct serialiser *s)
 static inline size_t start_variable_length_block(struct serialiser *s)
 {
 	serialiser_add(sizeof(u32), s);
-	return s->n_written;
+	return s->offset;
 }
 
 static void end_variable_length_block(size_t start_pos, struct serialiser *s)
 {
-	size_t old_n_written;
-	void *old_buf;
 	u32 block_len;
 
 	if (!s->buf)
 		return;
 
-	block_len = s->n_written - start_pos;
-
-	old_n_written = s->n_written;
-	old_buf = s->buf;
-	s->buf = (char*)s->buf - block_len - sizeof(block_len);
+	block_len = s->offset - start_pos;
+	serialiser_add(-(ssize_t)(block_len + sizeof(u32)), s);
 	serialise_u32(block_len, s);
-	s->buf = old_buf;
-	s->n_written = old_n_written;
+	serialiser_add(block_len, s);
 }
 
-static void serialise_header(const struct header *header, struct serialiser *s)
+static void serialise_header(struct serialiser *s)
 {
+	const struct header *header = &s->ctx->header;
 	serialise_u32(header->engine, s);
 	serialise_u32(header->save_num, s);
 	serialise_bstr(header->ply_name, s);
@@ -303,8 +343,9 @@ static void serialise_header(const struct header *header, struct serialiser *s)
 		serialise_u16(header->compressor, s);
 }
 
-static void serialise_offset_table(struct offset_table *table, struct serialiser *s)
+static void serialise_offset_table(struct serialiser *s)
 {
+	const struct offset_table *table = &s->ctx->offsets;
 	serialise_u32(table->off_form_ids_count, s);
 	serialise_u32(table->off_unknown_table, s);
 	serialise_u32(table->off_globals1, s);
@@ -320,10 +361,11 @@ static void serialise_offset_table(struct offset_table *table, struct serialiser
 	serialiser_add(sizeof(u32[15]), s);
 }
 
-static void serialise_plugins(char **plugins, u8 count, struct serialiser *s)
+static void serialise_plugins(const char **plugins, u32 count,
+	struct serialiser *s)
 {
 	size_t plugs_start;
-	u8 i;
+	u32 i;
 
 	plugs_start = start_variable_length_block(s);
 
@@ -334,23 +376,473 @@ static void serialise_plugins(char **plugins, u8 count, struct serialiser *s)
 	end_variable_length_block(plugs_start, s);
 }
 
-static void serialise_light_plugins(char **plugins, u16 count, struct serialiser *s)
+static void serialise_light_plugins(const char **plugins, u32 count,
+	struct serialiser *s)
 {
-	u16 i;
+	u32 i;
 
 	serialise_u16(count, s);
 	for (i = 0u; i < count; ++i)
 		serialise_bstr(plugins[i], s);
 }
 
-static void serialise_snapshot(const struct snapshot *snapshot, struct serialiser *s)
+static void serialise_uint_array(const u32 *array, u32 len, struct serialiser *s)
 {
-	int shot_sz;
+	u32 i;
 
-	shot_sz = snapshot_size(snapshot);
-	if (s->buf)
-		memcpy(s->buf, snapshot->data, shot_sz);
-	serialiser_add(shot_sz, s);
+	serialise_u32(len, s);
+	for (i = 0u; i < len; ++i)
+		serialise_u32(array[i], s);
+}
+
+static void serialise_raw_global(const struct raw_global *g, struct serialiser *s)
+{
+	serialiser_copy(g->data, g->data_sz, s);
+}
+
+static void serialise_misc_stats(const struct misc_stats *stats,
+	struct serialiser *s)
+{
+	u32 i;
+
+	serialise_u32(stats->count, s);
+	for (i = 0u; i < stats->count; ++i) {
+		serialise_bstr(stats->stats[i].name, s);
+		serialise_u8(stats->stats[i].category, s);
+		serialise_i32(stats->stats[i].value, s);
+	}
+}
+
+static void serialise_player_location(const struct player_location *pl,
+	struct serialiser *s)
+{
+	serialise_u32(pl->next_object_id, s);
+	serialise_ref_id(pl->world_space1, s);
+	serialise_i32(pl->coord_x, s);
+	serialise_i32(pl->coord_y, s);
+	serialise_ref_id(pl->world_space2, s);
+	serialise_f32(pl->pos_x, s);
+	serialise_f32(pl->pos_y, s);
+	serialise_f32(pl->pos_z, s);
+	if (*s->ctx->game == SKYRIM)
+		serialise_u8(pl->unknown, s);
+}
+
+static void serialise_weather(const struct weather *w, struct serialiser *s)
+{
+	u32 i;
+
+	serialise_ref_id(w->climate, s);
+	serialise_ref_id(w->weather, s);
+	serialise_ref_id(w->prev_weather, s);
+	serialise_ref_id(w->unk_weather1, s);
+	serialise_ref_id(w->unk_weather2, s);
+	serialise_ref_id(w->regn_weather, s);
+	serialise_f32(w->current_time, s);
+	serialise_f32(w->begin_time, s);
+	serialise_f32(w->weather_pct, s);
+	for (i = 0u; i < ARRAY_SIZE(w->data1); ++i)
+		serialise_u32(w->data1[i], s);
+	serialise_f32(w->data2, s);
+	serialise_u32(w->data3, s);
+	serialise_u8(w->flags, s);
+	serialiser_copy(w->data4, w->data4_sz, s);
+}
+
+static void serialise_global_vars(const struct global_vars *v, struct serialiser *s)
+{
+	u32 i;
+
+	serialise_u32(v->count, s);
+	for (i = 0u; i < v->count; ++i) {
+		serialise_ref_id(v->vars[i].form_id, s);
+		serialise_f32(v->vars[i].value, s);
+	}
+}
+
+static void serialise_global_data(const struct global_data *g,
+	enum global_data_type type, struct serialiser *s)
+{
+	size_t bs;
+
+	serialise_u32(type, s);
+	bs = start_variable_length_block(s);
+
+	switch (type) {
+	case GLOBAL_MISC_STATS:
+		serialise_misc_stats(&g->stats, s);
+		break;
+	case GLOBAL_PLAYER_LOCATION:
+		serialise_player_location(&g->player_location, s);
+		break;
+	case GLOBAL_GAME:
+		serialise_raw_global(&g->game, s);
+		break;
+	case GLOBAL_GLOBAL_VARIABLES:
+		serialise_global_vars(&g->global_vars, s);
+		break;
+	case GLOBAL_CREATED_OBJECTS:
+		serialise_raw_global(&g->created_objs, s);
+		break;
+	case GLOBAL_EFFECTS:
+		serialise_raw_global(&g->effects, s);
+		break;
+	case GLOBAL_WEATHER:
+		serialise_weather(&g->weather, s);
+		break;
+	case GLOBAL_AUDIO:
+		serialise_raw_global(&g->audio, s);
+		break;
+	case GLOBAL_SKY_CELLS:
+		serialise_raw_global(&g->sky_cells, s);
+		break;
+	case GLOBAL_UNKNOWN_9:
+		serialise_raw_global(&g->unknown_9, s);
+		break;
+	case GLOBAL_UNKNOWN_10:
+		serialise_raw_global(&g->unknown_10, s);
+		break;
+	case GLOBAL_UNKNOWN_11:
+		serialise_raw_global(&g->unknown_11, s);
+		break;
+	case GLOBAL_PROCESS_LISTS:
+		serialise_raw_global(&g->process_lists, s);
+		break;
+	case GLOBAL_COMBAT:
+		serialise_raw_global(&g->combat, s);
+		break;
+	case GLOBAL_INTERFACE:
+		serialise_raw_global(&g->interface, s);
+		break;
+	case GLOBAL_ACTOR_CAUSES:
+		serialise_raw_global(&g->actor_causes, s);
+		break;
+	case GLOBAL_UNKNOWN_104:
+		serialise_raw_global(&g->unknown_104, s);
+		break;
+	case GLOBAL_DETECTION_MANAGER:
+		serialise_raw_global(&g->detection_man, s);
+		break;
+	case GLOBAL_LOCATION_METADATA:
+		serialise_raw_global(&g->location_meta, s);
+		break;
+	case GLOBAL_QUEST_STATIC_DATA:
+		serialise_raw_global(&g->quest_static, s);
+		break;
+	case GLOBAL_STORYTELLER:
+		serialise_raw_global(&g->story_teller, s);
+		break;
+	case GLOBAL_MAGIC_FAVORITES:
+		serialise_raw_global(&g->magic_favs, s);
+		break;
+	case GLOBAL_PLAYER_CONTROLS:
+		serialise_raw_global(&g->player_ctrls, s);
+		break;
+	case GLOBAL_STORY_EVENT_MANAGER:
+		serialise_raw_global(&g->story_event_man, s);
+		break;
+	case GLOBAL_INGREDIENT_SHARED:
+		serialise_raw_global(&g->ingredient_shared, s);
+		break;
+	case GLOBAL_MENU_CONTROLS:
+		serialise_raw_global(&g->menu_ctrls, s);
+		break;
+	case GLOBAL_MENU_TOPIC_MANAGER:
+		serialise_raw_global(&g->menu_topic_man, s);
+		break;
+	case GLOBAL_UNKNOWN_115:
+		serialise_raw_global(&g->unknown_115, s);
+		break;
+	case GLOBAL_UNKNOWN_116:
+		serialise_raw_global(&g->unknown_116, s);
+		break;
+	case GLOBAL_UNKNOWN_117:
+		serialise_raw_global(&g->unknown_117, s);
+		break;
+	case GLOBAL_TEMP_EFFECTS:
+		serialise_raw_global(&g->temp_effects, s);
+		break;
+	case GLOBAL_PAPYRUS:
+		serialise_raw_global(&g->papyrus, s);
+		break;
+	case GLOBAL_ANIM_OBJECTS:
+		serialise_raw_global(&g->anim_objs, s);
+		break;
+	case GLOBAL_TIMER:
+		serialise_raw_global(&g->timer, s);
+		break;
+	case GLOBAL_SYNCHRONISED_ANIMS:
+		serialise_raw_global(&g->synced_anims, s);
+		break;
+	case GLOBAL_MAIN:
+		serialise_raw_global(&g->main, s);
+		break;
+	case GLOBAL_UNKNOWN_1006:
+		serialise_raw_global(&g->unknown_1006, s);
+		break;
+	case GLOBAL_UNKNOWN_1007:
+		serialise_raw_global(&g->unknown_1007, s);
+		break;
+	default:
+		eprintf("serialiser: unexpected global data type (%u)\n", type);
+	}
+
+	end_variable_length_block(bs, s);
+}
+
+static void serialise_globals1(const struct global_data *g, struct serialiser *s)
+{
+	serialise_global_data(g, GLOBAL_MISC_STATS, s);
+	serialise_global_data(g, GLOBAL_PLAYER_LOCATION, s);
+	serialise_global_data(g, GLOBAL_GAME, s);
+	serialise_global_data(g, GLOBAL_GLOBAL_VARIABLES, s);
+	serialise_global_data(g, GLOBAL_CREATED_OBJECTS, s);
+	serialise_global_data(g, GLOBAL_EFFECTS, s);
+	serialise_global_data(g, GLOBAL_WEATHER, s);
+	serialise_global_data(g, GLOBAL_AUDIO, s);
+	serialise_global_data(g, GLOBAL_SKY_CELLS, s);
+
+	if (*s->ctx->game == FALLOUT4) {
+		serialise_global_data(g, GLOBAL_UNKNOWN_9, s);
+		serialise_global_data(g, GLOBAL_UNKNOWN_10, s);
+		serialise_global_data(g, GLOBAL_UNKNOWN_11, s);
+	}
+}
+
+static void serialise_globals2(const struct global_data *g, struct serialiser *s)
+{
+	serialise_global_data(g, GLOBAL_PROCESS_LISTS, s);
+	serialise_global_data(g, GLOBAL_COMBAT, s);
+	serialise_global_data(g, GLOBAL_INTERFACE, s);
+	serialise_global_data(g, GLOBAL_ACTOR_CAUSES, s);
+	serialise_global_data(g, GLOBAL_UNKNOWN_104, s);
+	serialise_global_data(g, GLOBAL_DETECTION_MANAGER, s);
+	serialise_global_data(g, GLOBAL_LOCATION_METADATA, s);
+	if (*s->ctx->game == SKYRIM)
+		serialise_global_data(g, GLOBAL_QUEST_STATIC_DATA, s);
+	serialise_global_data(g, GLOBAL_STORYTELLER, s);
+	serialise_global_data(g, GLOBAL_MAGIC_FAVORITES, s);
+	serialise_global_data(g, GLOBAL_PLAYER_CONTROLS, s);
+	serialise_global_data(g, GLOBAL_STORY_EVENT_MANAGER, s);
+	serialise_global_data(g, GLOBAL_INGREDIENT_SHARED, s);
+	serialise_global_data(g, GLOBAL_MENU_CONTROLS, s);
+	serialise_global_data(g, GLOBAL_MENU_TOPIC_MANAGER, s);
+
+	if (*s->ctx->game == FALLOUT4) {
+		serialise_global_data(g, GLOBAL_UNKNOWN_115, s);
+		serialise_global_data(g, GLOBAL_UNKNOWN_116, s);
+		serialise_global_data(g, GLOBAL_UNKNOWN_117, s);
+	}
+}
+
+static void serialise_globals3(const struct global_data *g, struct serialiser *s)
+{
+	serialise_global_data(g, GLOBAL_TEMP_EFFECTS, s);
+	serialise_global_data(g, GLOBAL_PAPYRUS, s);
+	serialise_global_data(g, GLOBAL_ANIM_OBJECTS, s);
+	serialise_global_data(g, GLOBAL_TIMER, s);
+	serialise_global_data(g, GLOBAL_SYNCHRONISED_ANIMS, s);
+	serialise_global_data(g, GLOBAL_MAIN, s);
+
+	if (*s->ctx->game == FALLOUT4) {
+		serialise_global_data(g, GLOBAL_UNKNOWN_1006, s);
+		serialise_global_data(g, GLOBAL_UNKNOWN_1007, s);
+	}
+}
+
+static void serialise_change_form(const struct change_form *cf,
+	struct serialiser *s)
+{
+	serialise_ref_id(cf->form_id, s);
+	serialise_u32(cf->flags, s);
+	serialise_u8(cf->type, s);
+	serialise_u8(cf->version, s);
+
+	switch (cf->type >> 6) {
+	case 0u:
+		serialise_u8(cf->length1, s);
+		serialise_u8(cf->length2, s);
+		break;
+	case 1u:
+		serialise_u16(cf->length1, s);
+		serialise_u16(cf->length2, s);
+		break;
+	case 2u:
+		serialise_u32(cf->length1, s);
+		serialise_u32(cf->length2, s);
+		break;
+	default:
+		eprintf("serialiser: impossible change form length type\n");
+	}
+
+	serialiser_copy(cf->data, cf->length1, s);
+}
+
+static int serialise_body(const struct game_save *save, struct serialiser *s)
+{
+	size_t off_offset_table;
+	u32 i;
+
+	serialise_u8(s->ctx->revision, s);
+
+	if (*s->ctx->game == FALLOUT4)
+		serialise_bstr(save->game_version, s);
+
+	serialise_plugins(save->plugins, save->num_plugins, s);
+	if (has_light_plugins(s->ctx)) {
+		serialise_light_plugins(save->light_plugins,
+			save->num_light_plugins, s);
+	}
+
+	off_offset_table = s->offset;
+	serialise_offset_table(s);
+
+	s->ctx->offsets.off_globals1 = s->offset;
+	serialise_globals1(&save->globals, s);
+	s->ctx->offsets.off_globals2 = s->offset;
+	serialise_globals2(&save->globals, s);
+
+	s->ctx->offsets.off_change_forms = s->offset;
+	for (i = 0u; i < save->num_change_forms; ++i) {
+		serialise_change_form(save->change_forms + i, s);
+	}
+
+	s->ctx->offsets.off_globals3 = s->offset;
+	serialise_globals3(&save->globals, s);
+
+	s->ctx->offsets.off_form_ids_count = s->offset;
+	serialise_uint_array(save->form_ids, save->num_form_ids, s);
+	serialise_uint_array(save->world_spaces, save->num_world_spaces, s);
+
+	s->ctx->offsets.off_unknown_table = s->offset;
+	serialise_u32(save->unknown3_sz, s);
+	serialiser_copy(save->unknown3, save->unknown3_sz, s);
+	return 0;
+}
+
+static void serialise_signature(struct serialiser *s)
+{
+	switch (*s->ctx->game) {
+	case SKYRIM:
+		serialiser_copy(skyrim_signature,
+			sizeof(skyrim_signature), s);
+		break;
+	case FALLOUT4:
+		serialiser_copy(fallout4_signature,
+			sizeof(fallout4_signature), s);
+		break;
+	}
+}
+
+static void init_serialiser(void *data, size_t file_offset,
+	struct file_context *ctx, struct serialiser *s)
+{
+	memset(s, 0, sizeof(*s));
+	s->buf = data;
+	s->offset = file_offset;
+	s->ctx = ctx;
+}
+
+static int serialise_save_data(const struct game_save *save,
+	struct serialiser *s)
+{
+	u32 bs;
+
+	serialise_signature(s);
+
+	bs = start_variable_length_block(s);
+	serialise_header(s);
+	end_variable_length_block(bs, s);
+
+	serialiser_copy(save->snapshot->data, snapshot_size(save->snapshot), s);
+
+	if (!can_use_compressor(s->ctx))
+		return serialise_body(save, s);
+
+	struct serialiser body_s;
+	void *body = NULL;
+	int com_len;
+
+	init_serialiser(NULL, s->offset, s->ctx, &body_s);
+	serialise_body(save, &body_s);
+
+	if (!s->buf) {
+		/* 2*sizeof(u32) = uncompressed_len + compressed_len */
+		serialiser_add(2*sizeof(u32) + body_s.n_written, s);
+		return 0;
+	}
+	if ((body = malloc(body_s.n_written)) == NULL) {
+		eprintf("serialiser: no memory\n");
+		return -1;
+	}
+
+	init_serialiser(body, s->offset, s->ctx, &body_s);
+	if (serialise_body(save, &body_s) == -1) {
+		free(body);
+		return -1;
+	}
+
+	serialise_u32(body_s.n_written, s); /* uncompressed length */
+	bs = start_variable_length_block(s);
+
+	com_len = cegse_compress(body, s->buf, body_s.n_written,
+		body_s.n_written, s->ctx->header.compressor);
+	if (com_len == -1) {
+		free(body);
+		return -1;
+	}
+	serialiser_add(com_len, s);
+
+	end_variable_length_block(bs, s); /* write compressed length */
+	free(body);
+
+	return 0;
+}
+
+static ssize_t serialise_to_buffer(void *data, const struct game_save *save)
+{
+	struct file_context ctx;
+	struct serialiser s;
+	init_file_ctx(save, &ctx);
+	init_serialiser(data, 0u, &ctx, &s);
+
+	if (serialise_save_data(save, &s) == -1)
+		return -1;
+
+	return s.n_written;
+}
+
+int serialise_to_disk(int fd, const struct game_save *save)
+{
+	void *buffer;
+	size_t serialised_len;
+	serialised_len = serialise_to_buffer(NULL, save);
+
+	if (lseek(fd, serialised_len - 1, SEEK_SET) == -1) {
+		perror("serialiser: cannot seek");
+		return -1;
+	}
+
+	if (write(fd, "", 1u) == -1) {
+		perror("serialiser: cannot write to file");
+		return -1;
+	}
+
+	buffer = mmap(NULL, serialised_len, PROT_WRITE, MAP_PRIVATE, fd, 0);
+	if (buffer == MAP_FAILED) {
+		perror("serialiser: cannot mmap file");
+		return -1;
+	}
+
+	serialise_to_buffer(buffer, save);
+
+	if (msync(buffer, serialised_len, MS_SYNC) == -1) {
+		perror("serialiser: cannot write to file");
+		munmap(buffer, serialised_len);
+		return -1;
+	}
+	munmap(buffer, serialised_len);
+	return 0;
 }
 
 #define RETURN_EOD_IF_SHORT(size, p) do {					\
@@ -933,7 +1425,9 @@ static int parse_change_form(struct change_form *cf, struct parser *p)
 	}
 	if (p->eod)
 		return -1;
-	cf->type &= 0x3fu;
+
+	/* Don't remove length information yet. */
+	/* cf->type &= 0x3fu; */
 
 	RETURN_EOD_IF_SHORT(cf->length1, p);
 

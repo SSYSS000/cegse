@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "types.h"
 
 enum global_data_type {
+	/* Table 1 (0 - 11) */
 	GLOBAL_MISC_STATS		= 0,
 	GLOBAL_PLAYER_LOCATION		= 1,
 	GLOBAL_GAME			= 2,
@@ -37,6 +38,7 @@ enum global_data_type {
 	GLOBAL_UNKNOWN_9		= 9,
 	GLOBAL_UNKNOWN_10		= 10,
 	GLOBAL_UNKNOWN_11		= 11,
+	/* Table 2 (100 - 117) */
 	GLOBAL_PROCESS_LISTS		= 100,
 	GLOBAL_COMBAT			= 101,
 	GLOBAL_INTERFACE		= 102,
@@ -55,6 +57,7 @@ enum global_data_type {
 	GLOBAL_UNKNOWN_115		= 115,
 	GLOBAL_UNKNOWN_116		= 116,
 	GLOBAL_UNKNOWN_117		= 117,
+	/* Table 3 (1000 - 1007) */
 	GLOBAL_TEMP_EFFECTS		= 1000,
 	GLOBAL_PAPYRUS			= 1001,
 	GLOBAL_ANIM_OBJECTS		= 1002,
@@ -174,6 +177,7 @@ struct raw_global {
 };
 
 struct global_data {
+	/* Table 1 (0 - 11) */
 	struct misc_stats stats;
 	struct player_location player_location;
 	struct raw_global game;
@@ -186,6 +190,7 @@ struct global_data {
 	struct raw_global unknown_9;  /* Fallout 4 */
 	struct raw_global unknown_10; /* Fallout 4 */
 	struct raw_global unknown_11; /* Fallout 4 */
+	/* Table 2 (100 - 117) */
 	struct raw_global process_lists;
 	struct raw_global combat;
 	struct raw_global interface;
@@ -204,6 +209,7 @@ struct global_data {
 	struct raw_global unknown_115; /* Fallout 4 */
 	struct raw_global unknown_116; /* Fallout 4 */
 	struct raw_global unknown_117; /* Fallout 4 */
+	/* Table 3 (1000 - 1007) */
 	struct raw_global temp_effects;
 	struct raw_global papyrus;
 	struct raw_global anim_objs;

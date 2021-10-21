@@ -45,6 +45,8 @@ struct header {
 	u32 	compressor;
 };
 
+int serialise_to_disk(int fd, const struct game_save *save);
+
 int parse_file_header_only(int fd, struct header *header);
 int parse_file(int fd, struct game_save **out);
 

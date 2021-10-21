@@ -37,11 +37,7 @@ struct game_save {
 	enum game game;
 	u32 engine;
 	u32 file_format;
-
 	u32 save_num;
-
-	time_t time_saved;
-
 	struct snapshot *snapshot;
 
 	/*
@@ -50,6 +46,16 @@ struct game_save {
 	 * Skyrim does not use this.
 	*/
 	char game_version[24];
+
+	/* the following strings mustn't be edited. */
+	char ply_name[PLAYER_NAME_MAX_LEN + 1];
+	char location[64];
+	char game_time[48];
+	char race_id[48];
+	u32 level;
+	u32 sex;
+	f32 current_xp, target_xp;
+	time_t time_saved;
 
 	u32 num_plugins;
 	char **plugins;

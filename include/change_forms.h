@@ -167,8 +167,8 @@ struct change_form {
 	u32 flags;
 	u32 type;
 	u32 version;
-	u32 length1;
-	u32 length2;
+	u32 length1;	/* Length of data */
+	u32 length2;	/* Non-zero value means data is compressed */
 	unsigned char *data;
 };
 
