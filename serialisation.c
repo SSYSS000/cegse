@@ -823,14 +823,12 @@ static int serialise_save_data(const struct game_save *save,
 
 	com_len = cegse_compress(body, s->buf, body_s.n_written,
 		body_s.n_written, s->ctx->header.compressor);
-	if (com_len == -1) {
-		free(body);
+	free(body);
+	if (com_len == -1)
 		return -1;
-	}
 	serialiser_add(com_len, s);
 
 	end_variable_length_block(bs, s); /* write compressed length */
-	free(body);
 
 	return 0;
 }
