@@ -388,24 +388,20 @@ static void serialise_offset_table(struct serialiser *s)
 static void serialise_plugins(char ** const plugins, u32 count,
 	struct serialiser *s)
 {
-	ssize_t off_start, off_end;
+	size_t bs;
 	u32 i;
 
-	serialise_u32(0u, s);
-	off_start = s->offset;
-
+	bs = start_variable_length_block(s);
 	serialise_u8(count, s);
 	for (i = 0u; i < count; ++i)
 		serialise_bstr(plugins[i], s);
-
-	off_end = s->offset;
-	serialiser_add(off_start - off_end - sizeof(u32), s);
 	/*
 	 * idk what is going on, but Bethesda likes to add 2 to the actual
 	 * size of plugin info.
 	 */
-	serialise_u32(off_end - off_start + 2, s);
-	serialiser_add(off_end - off_start, s);
+	serialiser_add(2, s);
+	end_variable_length_block(bs, s);
+	serialiser_add(-2, s);
 }
 
 static void serialise_light_plugins(char ** const plugins, u32 count,
