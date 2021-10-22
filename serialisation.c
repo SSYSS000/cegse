@@ -369,17 +369,28 @@ static void serialise_header(struct serialiser *s)
 
 static void serialise_offset_table(struct serialiser *s)
 {
-	const struct offset_table *table = &s->ctx->offsets;
-	serialise_u32(table->off_form_ids_count, s);
-	serialise_u32(table->off_unknown_table, s);
-	serialise_u32(table->off_globals1, s);
-	serialise_u32(table->off_globals2, s);
-	serialise_u32(table->off_change_forms, s);
-	serialise_u32(table->off_globals3, s);
-	serialise_u32(table->num_globals1, s);
-	serialise_u32(table->num_globals2, s);
-	serialise_u32(table->num_globals3, s);
-	serialise_u32(table->num_change_form, s);
+	struct offset_table table = s->ctx->offsets;
+
+	if (is_skse(s->ctx)) {
+		/* Offsets are bugged (Bethesda's design) and off by 8 bytes. */
+		table.off_form_ids_count -= 0x8;
+		table.off_unknown_table -= 0x8;
+		table.off_unknown_table -= 0x8;
+		table.off_globals1 -= 0x8;
+		table.off_globals2 -= 0x8;
+		table.off_globals3 -= 0x8;
+		table.off_change_forms -= 0x8;
+	}
+	serialise_u32(table.off_form_ids_count, s);
+	serialise_u32(table.off_unknown_table, s);
+	serialise_u32(table.off_globals1, s);
+	serialise_u32(table.off_globals2, s);
+	serialise_u32(table.off_change_forms, s);
+	serialise_u32(table.off_globals3, s);
+	serialise_u32(table.num_globals1, s);
+	serialise_u32(table.num_globals2, s);
+	serialise_u32(table.num_globals3, s);
+	serialise_u32(table.num_change_form, s);
 	if (s->buf)
 		memset(s->buf, 0, sizeof(u32[15]));
 	serialiser_add(sizeof(u32[15]), s);
@@ -395,13 +406,19 @@ static void serialise_plugins(char ** const plugins, u32 count,
 	serialise_u8(count, s);
 	for (i = 0u; i < count; ++i)
 		serialise_bstr(plugins[i], s);
-	/*
-	 * idk what is going on, but Bethesda likes to add 2 to the actual
-	 * size of plugin info.
-	 */
-	serialiser_add(2, s);
-	end_variable_length_block(bs, s);
-	serialiser_add(-2, s);
+
+	if (is_skse(s->ctx)) {
+		/*
+		* idk what is going on, but Bethesda likes to add 2 to the actual
+		* size of plugin info.
+		*/
+		serialiser_add(2, s);
+		end_variable_length_block(bs, s);
+		serialiser_add(-2, s);
+	}
+	else {
+		end_variable_length_block(bs, s);
+	}
 }
 
 static void serialise_light_plugins(char ** const plugins, u32 count,
@@ -645,8 +662,8 @@ static void serialise_globals2(const struct global_data *g, struct serialiser *s
 	serialise_global_data(g, GLOBAL_COMBAT, s);
 	serialise_global_data(g, GLOBAL_INTERFACE, s);
 	serialise_global_data(g, GLOBAL_ACTOR_CAUSES, s);
-	if (*s->ctx->game == SKYRIM)
-		serialise_global_data(g, GLOBAL_UNKNOWN_104, s);
+	/*if (*s->ctx->game == SKYRIM)
+		serialise_global_data(g, GLOBAL_UNKNOWN_104, s);*/
 	serialise_global_data(g, GLOBAL_DETECTION_MANAGER, s);
 	serialise_global_data(g, GLOBAL_LOCATION_METADATA, s);
 	if (*s->ctx->game == SKYRIM) {
@@ -817,6 +834,7 @@ static int serialise_save_data(const struct game_save *save,
 	serialise_u32(body_s.n_written, s); /* uncompressed length */
 	bs = start_variable_length_block(s);
 
+	eprintf("serialiser: compressed at 0x%08zx\n", s->offset);
 	com_len = cegse_compress(body, s->buf, body_s.n_written,
 		body_s.n_written, s->ctx->header.compressor);
 	free(body);
@@ -845,31 +863,26 @@ static ssize_t serialise_to_buffer(void *data, const struct game_save *save)
 int serialise_to_disk(int fd, const struct game_save *save)
 {
 	void *buffer;
-	size_t serialised_len;
+	ssize_t serialised_len;
 	serialised_len = serialise_to_buffer(NULL, save);
 
-	if (lseek(fd, serialised_len - 1, SEEK_SET) == -1) {
-		perror("serialiser: cannot seek");
+	if ((buffer = malloc(serialised_len)) == NULL) {
+		eprintf("serialiser: no memory\n");
 		return -1;
 	}
 
-	if (write(fd, "", 1u) == -1) {
-		perror("serialiser: cannot write to file");
+	if ((serialised_len = serialise_to_buffer(buffer, save)) == -1) {
+		free(buffer);
 		return -1;
 	}
 
-	buffer = mmap(NULL, serialised_len, PROT_WRITE, MAP_SHARED, fd, 0);
-	if (buffer == MAP_FAILED) {
-		perror("serialiser: cannot mmap file");
+	if (write(fd, buffer, serialised_len) != serialised_len) {
+		perror("write");
+		free(buffer);
 		return -1;
 	}
 
-	if (serialise_to_buffer(buffer, save) == -1) {
-		munmap(buffer, serialised_len);
-		return -1;
-	}
-
-	munmap(buffer, serialised_len);
+	free(buffer);
 	return 0;
 }
 
@@ -1100,6 +1113,20 @@ static int parse_offset_table(struct parser *p)
 	parse_u32(&table->num_globals2, p);
 	parse_u32(&table->num_globals3, p);
 	parse_u32(&table->num_change_form, p);
+
+	if (*p->ctx->game == SKYRIM) {
+		table->num_globals3 += 1;
+	}
+
+	if (is_skse(p->ctx)) {
+		/* Offsets are bugged (Bethesda's design) and off by 8 bytes. */
+		table->off_form_ids_count += 0x8;
+		table->off_unknown_table += 0x8;
+		table->off_globals1 += 0x8;
+		table->off_globals2 += 0x8;
+		table->off_globals3 += 0x8;
+		table->off_change_forms += 0x8;
+	}
 
 	/* Skip unused. */
 	parser_remove(sizeof(u32[15]), p);
@@ -1492,6 +1519,16 @@ static int parse_uint_array(u32 **array, u32 *len, struct parser *p)
 	return 0;
 }
 
+#define CHECK_OFFSET(real, blockname, p) do {					\
+	if ((p)->offset != (real)) {						\
+		eprintf("parser: attempted to parse %s at wrong offset "	\
+			"(0x%08zx). real offset is 0x%08zx\n",			\
+			(blockname), (p)->offset, (size_t)(real));		\
+		return -1;							\
+	}									\
+	eprintf("%08zx: parsing %s\n", (p)->offset, blockname);			\
+} while (0)
+
 static int parse_body(struct game_save *save, struct parser *p)
 {
 	u32 next_len, i;
@@ -1512,15 +1549,22 @@ static int parse_body(struct game_save *save, struct parser *p)
 			parse_u16, p);
 	}
 
+	eprintf("%08zx: Offset table\n", p->offset);
 	if (parse_offset_table(p) == -1)
 		return -1;
 	print_offset_table(&p->ctx->offsets);
 
-	next_len = p->ctx->offsets.num_globals1 + p->ctx->offsets.num_globals2;
-	for (i = 0u; i < next_len; ++i)
+	CHECK_OFFSET(p->ctx->offsets.off_globals1, "Globals 1", p);
+	for (i = 0u; i < p->ctx->offsets.num_globals1; ++i)
 		if (parse_global_data(&save->globals, p) == -1)
 			return -1;
 
+	CHECK_OFFSET(p->ctx->offsets.off_globals2, "Globals 2", p);
+	for (i = 0u; i < p->ctx->offsets.num_globals2; ++i)
+		if (parse_global_data(&save->globals, p) == -1)
+			return -1;
+
+	CHECK_OFFSET(p->ctx->offsets.off_change_forms, "Change forms", p);
 	next_len = p->ctx->offsets.num_change_form;
 	save->change_forms = malloc(next_len * sizeof(*save->change_forms));
 	if (!save->change_forms) {
@@ -1535,23 +1579,28 @@ static int parse_body(struct game_save *save, struct parser *p)
 		save->num_change_forms++;
 	}
 
+	CHECK_OFFSET(p->ctx->offsets.off_globals3, "Globals 3", p);
 	for (i = 0u; i < p->ctx->offsets.num_globals3; ++i)
 		if (parse_global_data(&save->globals, p) == -1)
 			return -1;
 
+	CHECK_OFFSET(p->ctx->offsets.off_form_ids_count, "Form IDs", p);
 	if (parse_uint_array(&save->form_ids, &save->num_form_ids, p) == -1)
 		return -1;
+	eprintf("form ids end: %zx\n", p->offset);
 	if (parse_uint_array(&save->world_spaces, &save->num_world_spaces, p) == -1)
 		return -1;
+
+	CHECK_OFFSET(p->ctx->offsets.off_unknown_table, "Unknown table", p);
 	if (parse_u32(&save->unknown3_sz, p) == -1)
 		return -1;
-
 	save->unknown3 = malloc(save->unknown3_sz * sizeof(*save->unknown3));
 	if (!save->unknown3) {
 		eprintf("parser: no memory\n");
 		return -1;
 	}
 	parser_copy(save->unknown3, save->unknown3_sz, p);
+
 	return p->eod ? -1 : 0;
 }
 
@@ -1593,8 +1642,14 @@ static int parse_save_data(void *data, size_t data_sz, struct game_save *save)
 		u32 uncom_len;
 		u32 com_len;
 		int rc;
+		FILE *f = fopen("decompressed.data", "wb");
+		if (!f) {
+			perror("fopen");
+			return -1;
+		}
 		parse_u32(&uncom_len, &p);
 		parse_u32(&com_len, &p);
+		fwrite(data, p.offset, 1u, f);
 		if (p.eod)
 			goto out_error;
 		rc = new_subparser(&subp, com_len, uncom_len,
@@ -1602,6 +1657,10 @@ static int parse_save_data(void *data, size_t data_sz, struct game_save *save)
 		if (rc == -1)
 			goto out_error;
 		p = subp;
+
+		fwrite(subp.buf, subp.buf_sz, 1u, f);
+
+		fclose(f);
 	}
 
 	if (parse_body(save, &p) == -1)
@@ -1610,9 +1669,7 @@ static int parse_save_data(void *data, size_t data_sz, struct game_save *save)
 	return 0;
 out_error:
 	if (p.eod)
-		eprintf("parser: save file too short\n");
-	if (save)
-		game_save_free(save);
+		eprintf("parser: %08zx: save file too short\n", p.offset);
 	parser_free(&p);
 	return -1;
 }
