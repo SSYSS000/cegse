@@ -306,9 +306,9 @@ static void serialise_vsval(u32 value, struct serialiser *s)
 static void serialise_ref_id(u32 ref_id, struct serialiser *s)
 {
 	u8 bytes[3];
-	bytes[0] = ref_id;
+	bytes[0] = ref_id >> 16;
 	bytes[1] = ref_id >> 8;
-	bytes[2] = ref_id >> 16;
+	bytes[2] = ref_id;
 	serialiser_copy(bytes, sizeof(bytes), s);
 }
 
@@ -1122,7 +1122,7 @@ static int parse_ref_id(u32 *ref, struct parser *p)
 	if (parser_copy(bytes, sizeof(bytes), p) == -1)
 		return -1;
 
-	*ref = bytes[2] << 16 | bytes[1] << 8 | bytes[0];
+	*ref = bytes[0] << 16 | bytes[1] << 8 | bytes[2];
 	return 0;
 }
 
