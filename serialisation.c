@@ -82,13 +82,6 @@ struct serialiser {
 struct parser {
 	struct file_context *ctx;
 
-	/*
-	 * sp_data points to a decompressed data block that a sub parser
-	 * accesses. It must be freed when the sub parser goes out of scope.
-	 * For the top level parser this is NULL.
-	 */
-	void *sp_data;
-
 	const void *buf;	/* Pointer to the next item for parsing */
 	size_t buf_sz;		/* The number of bytes remaining in buf */
 	size_t offset;		/* File offset */
@@ -369,28 +362,18 @@ static void serialise_header(struct serialiser *s)
 
 static void serialise_offset_table(struct serialiser *s)
 {
-	struct offset_table table = s->ctx->offsets;
+	struct offset_table *table = &s->ctx->offsets;
 
-	if (is_skse(s->ctx)) {
-		/* Offsets are bugged (Bethesda's design) and off by 8 bytes. */
-		table.off_form_ids_count -= 0x8;
-		table.off_unknown_table -= 0x8;
-		table.off_unknown_table -= 0x8;
-		table.off_globals1 -= 0x8;
-		table.off_globals2 -= 0x8;
-		table.off_globals3 -= 0x8;
-		table.off_change_forms -= 0x8;
-	}
-	serialise_u32(table.off_form_ids_count, s);
-	serialise_u32(table.off_unknown_table, s);
-	serialise_u32(table.off_globals1, s);
-	serialise_u32(table.off_globals2, s);
-	serialise_u32(table.off_change_forms, s);
-	serialise_u32(table.off_globals3, s);
-	serialise_u32(table.num_globals1, s);
-	serialise_u32(table.num_globals2, s);
-	serialise_u32(table.num_globals3, s);
-	serialise_u32(table.num_change_form, s);
+	serialise_u32(table->off_form_ids_count, s);
+	serialise_u32(table->off_unknown_table, s);
+	serialise_u32(table->off_globals1, s);
+	serialise_u32(table->off_globals2, s);
+	serialise_u32(table->off_change_forms, s);
+	serialise_u32(table->off_globals3, s);
+	serialise_u32(table->num_globals1, s);
+	serialise_u32(table->num_globals2, s);
+	serialise_u32(table->num_globals3, s);
+	serialise_u32(table->num_change_form, s);
 	if (s->buf)
 		memset(s->buf, 0, sizeof(u32[15]));
 	serialiser_add(sizeof(u32[15]), s);
@@ -407,7 +390,7 @@ static void serialise_plugins(char ** const plugins, u32 count,
 	for (i = 0u; i < count; ++i)
 		serialise_bstr(plugins[i], s);
 
-	if (is_skse(s->ctx)) {
+	if (is_skse(s->ctx) || *s->ctx->game == FALLOUT4) {
 		/*
 		* idk what is going on, but Bethesda likes to add 2 to the actual
 		* size of plugin info.
@@ -893,12 +876,13 @@ int serialise_to_disk(int fd, const struct game_save *save)
 	}									\
 } while (0)
 
-void init_parser(const void *buf, size_t buf_sz, struct file_context *ctx,
-	struct parser *p)
+void init_parser(const void *data, size_t data_sz, size_t offset,
+	struct file_context *ctx, struct parser *p)
 {
 	memset(p, 0, sizeof(*p));
-	p->buf = buf;
-	p->buf_sz = buf_sz;
+	p->buf = data;
+	p->buf_sz = data_sz;
+	p->offset = offset;
 	p->ctx = ctx;
 }
 
@@ -915,40 +899,6 @@ static int parser_copy(void *dest, u32 n, struct parser *p)
 	RETURN_EOD_IF_SHORT(n, p);
 	memcpy(dest, p->buf, n);
 	parser_remove(n, p);
-	return 0;
-}
-
-static void parser_free(struct parser *p)
-{
-	free(p->sp_data);
-}
-
-static int new_subparser(struct parser *restrict new, u32 com_len, u32 uncom_len,
-	enum compressor method, struct parser *restrict p)
-{
-	void *decompressed;
-	int rc;
-
-	RETURN_EOD_IF_SHORT(com_len, p);
-
-	decompressed = malloc(uncom_len);
-	if (!decompressed) {
-		eprintf("parser: no memory\n");
-		return -1;
-	}
-
-	rc = cegse_decompress(p->buf, decompressed, com_len, uncom_len, method);
-	if (rc == -1) {
-		free(decompressed);
-		return -1;
-	}
-
-	memcpy(new, p, sizeof(*new));
-	parser_remove(com_len, p);
-
-	new->sp_data = decompressed;
-	new->buf = decompressed;
-	new->buf_sz = uncom_len;
 	return 0;
 }
 
@@ -1604,74 +1554,69 @@ static int parse_body(struct game_save *save, struct parser *p)
 	return p->eod ? -1 : 0;
 }
 
-static int parse_save_data(void *data, size_t data_sz, struct game_save *save)
+static int parse_save_data(struct game_save *save, struct parser *p)
 {
-	struct file_context ctx;
-	struct parser p;
 	u32 bs;
 
-	init_blank_file_ctx(&ctx);
-	init_parser(data, data_sz, &ctx, &p);
-
-	if (parse_signature(&p) == (enum game)-1) {
+	if (parse_signature(p) == (enum game)-1) {
 		eprintf("parser: not a Creation Engine save file\n");
 		return -1;
 	}
 
-	parse_u32(&bs, &p);
-	if (parse_header(&p) == -1)
-		goto out_error;
-	save->game = *ctx.game;
-	save->engine = *ctx.engine;
-	save->save_num = ctx.header.save_num;
-	save->level = ctx.header.level;
-	save->sex = ctx.header.sex;
-	save->current_xp = ctx.header.current_xp;
-	save->target_xp = ctx.header.target_xp;
-	save->time_saved = filetime_to_time(p.ctx->header.filetime);
-	strcpy(save->ply_name, ctx.header.ply_name);
-	strcpy(save->location, ctx.header.location);
-	strcpy(save->game_time, ctx.header.game_time);
-	strcpy(save->race_id, ctx.header.race_id);
+	parse_u32(&bs, p);
+	if (parse_header(p) == -1)
+		return -1;
+	save->game = *p->ctx->game;
+	save->engine = *p->ctx->engine;
+	save->save_num = p->ctx->header.save_num;
+	save->level = p->ctx->header.level;
+	save->sex = p->ctx->header.sex;
+	save->current_xp = p->ctx->header.current_xp;
+	save->target_xp = p->ctx->header.target_xp;
+	save->time_saved = filetime_to_time(p->ctx->header.filetime);
+	strcpy(save->ply_name, p->ctx->header.ply_name);
+	strcpy(save->location, p->ctx->header.location);
+	strcpy(save->game_time, p->ctx->header.game_time);
+	strcpy(save->race_id, p->ctx->header.race_id);
 
-	if (parse_snapshot(&save->snapshot, &p) == -1)
-		goto out_error;
+	if (parse_snapshot(&save->snapshot, p) == -1)
+		return -1;
 
-	if (can_use_compressor(p.ctx)) {
-		struct parser subp;
-		u32 uncom_len;
-		u32 com_len;
-		int rc;
-		FILE *f = fopen("decompressed.data", "wb");
-		if (!f) {
-			perror("fopen");
-			return -1;
-		}
-		parse_u32(&uncom_len, &p);
-		parse_u32(&com_len, &p);
-		fwrite(data, p.offset, 1u, f);
-		if (p.eod)
-			goto out_error;
-		rc = new_subparser(&subp, com_len, uncom_len,
-			p.ctx->header.compressor, &p);
-		if (rc == -1)
-			goto out_error;
-		p = subp;
+	if (!can_use_compressor(p->ctx))
+		return parse_body(save, p);
 
-		fwrite(subp.buf, subp.buf_sz, 1u, f);
+	struct parser body_p;
+	void *decompressed = NULL;
+	u32 uncom_len;
+	u32 com_len;
+	int rc;
+	parse_u32(&uncom_len, p);
+	parse_u32(&com_len, p);
+	if (p->eod)
+		return -1;
 
-		fclose(f);
+	RETURN_EOD_IF_SHORT(com_len, p);
+
+	if ((decompressed = malloc(uncom_len)) == NULL) {
+		eprintf("parser: no memory\n");
+		return -1;
 	}
 
-	if (parse_body(save, &p) == -1)
-		goto out_error;
-	parser_free(&p);
-	return 0;
-out_error:
-	if (p.eod)
-		eprintf("parser: %08zx: save file too short\n", p.offset);
-	parser_free(&p);
-	return -1;
+	rc = cegse_decompress(p->buf, decompressed, com_len, uncom_len,
+		p->ctx->header.compressor);
+	if (rc == -1) {
+		free(decompressed);
+		return -1;
+	}
+
+	init_parser(decompressed, uncom_len, p->offset, p->ctx, &body_p);
+	parser_remove(com_len, p);
+
+	rc = parse_body(save, &body_p);
+	free(decompressed);
+	if (rc == -1 && body_p.eod)
+		eprintf("parser: save file too short\n");
+	return rc;
 }
 
 int parse_file_header_only(int fd, struct header *header)
@@ -1688,7 +1633,7 @@ int parse_file_header_only(int fd, struct header *header)
 	}
 
 	init_blank_file_ctx(&ctx);
-	init_parser(buf, in_len, &ctx, &p);
+	init_parser(buf, in_len, 0, &ctx, &p);
 
 	if (parse_signature(&p) == (enum game)-1) {
 		eprintf("parser: not a Creation Engine save file\n");
@@ -1702,7 +1647,6 @@ int parse_file_header_only(int fd, struct header *header)
 	}
 
 	*header = p.ctx->header;
-
 	return 0;
 }
 
@@ -1713,6 +1657,8 @@ static int parse_file_from_pipe(int fd, struct game_save *out)
 	size_t buf_sz = 0u;
 	void *buf = NULL;
 	void *temp = NULL;
+	struct file_context ctx;
+	struct parser p;
 
 	while (1) {
 		buf_sz += block;
@@ -1736,8 +1682,14 @@ static int parse_file_from_pipe(int fd, struct game_save *out)
 		return -1;
 	}
 
-	if (parse_save_data(buf, total_read, out) == -1) {
+	init_blank_file_ctx(&ctx);
+	init_parser(buf, total_read, 0, &ctx, &p);
+
+	if (parse_save_data(out, &p) == -1) {
 		free(buf);
+		if (p.eod)
+			eprintf("parser: %08zx: save file too short\n",
+				p.offset);
 		return -1;
 	}
 
@@ -1747,6 +1699,8 @@ static int parse_file_from_pipe(int fd, struct game_save *out)
 
 static int parse_file_from_disk(int fd, off_t size, struct game_save *out)
 {
+	struct file_context ctx;
+	struct parser p;
 	void *contents;
 	int rc;
 
@@ -1756,8 +1710,14 @@ static int parse_file_from_disk(int fd, off_t size, struct game_save *out)
 		return -1;
 	}
 	madvise(contents, size, MADV_SEQUENTIAL);
-	rc = parse_save_data(contents, size, out);
+
+	init_blank_file_ctx(&ctx);
+	init_parser(contents, size, 0, &ctx, &p);
+
+	rc = parse_save_data(out, &p);
 	munmap(contents, size);
+	if (p.eod)
+		eprintf("parser: %08zx: save file too short\n", p.offset);
 	return rc;
 }
 
