@@ -47,18 +47,23 @@ typedef u64 FILETIME;
 
 typedef u32 ref_t;
 
-#define REF_TYPE(ref_id)	((ref_id) & 0x3u)
-#define REF_VALUE(ref_id)	((ref_id) >> 0x3u)
+#define REF_TYPE(ref_id)	((ref_id) >> 22u)
+#define REF_VALUE(ref_id)	((ref_id) & 0x3FFFFFu)
 
- /* Reference is an index to a form ID array */
-#define REF_INDEX(ref_id)	(REF_TYPE(ref_id) == 0u)
+/*
+ * Give a Reference ID value a type:
+ * 0 = Index into the Form ID array
+ * 1 = Regular (reference to Skyrim.esm)
+ * 2 = Created (plugin index of 0xFF)
+ */
+#define REF_INDEX(val)		(REF_VALUE(val))
+#define REF_REGULAR(val)	(REF_VALUE(val) | (1u << 22u))
+#define REF_CREATED(val)	(REF_VALUE(val) | (2u << 22u))
+#define REF_UNKNOWN(val)	(REF_VALUE(val) | (3u << 22u))
 
- /* Reference is to a regular object (in .esm) */
-#define REF_REGULAR(ref_id)	(REF_TYPE(ref_id) == 1u)
-
- /* Reference is to a created object (not in .esm) */
-#define REF_CREATED(ref_id)	(REF_TYPE(ref_id) == 2u)
-
-#define REF_UNKNOWN(ref_id)	(REF_TYPE(ref_id) == 3u)
+#define REF_IS_INDEX(ref_id)	(REF_TYPE(ref_id) == 0u)
+#define REF_IS_REGULAR(ref_id)	(REF_TYPE(ref_id) == 1u)
+#define REF_IS_CREATED(ref_id)	(REF_TYPE(ref_id) == 2u)
+#define REF_IS_UNKNOWN(ref_id)	(REF_TYPE(ref_id) == 3u)
 
 #endif // CEGSE_TYPES_H
