@@ -905,11 +905,8 @@ static int parser_copy(void *dest, u32 n, struct parser *p)
 static enum game parse_signature(struct parser *p)
 {
 	enum game game = (enum game)-1;
-	/*
-	 * 32 should be more than enough to cover all signatures.
-	 * No file signature is this long, but a valid save file should
-	 * be at least 32 bytes long...
-	 */
+
+	/* 32 should be more than enough to cover all signatures. */
 	RETURN_EOD_IF_SHORT(32, p);
 
 	if (!memcmp(p->buf, skyrim_signature, sizeof(skyrim_signature))) {
@@ -1065,11 +1062,15 @@ static int parse_offset_table(struct parser *p)
 	parse_u32(&table->num_change_form, p);
 
 	if (*p->ctx->game == SKYRIM) {
+		/*
+		 * Globals 3 table count is bugged (Bethesda's design) and
+		 * is short by 1.
+		 */
 		table->num_globals3 += 1;
 	}
 
 	if (is_skse(p->ctx)) {
-		/* Offsets are bugged (Bethesda's design) and off by 8 bytes. */
+		/* Offsets are bugged, too, and off by 8 bytes. */
 		table->off_form_ids_count += 0x8;
 		table->off_unknown_table += 0x8;
 		table->off_globals1 += 0x8;
