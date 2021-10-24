@@ -305,10 +305,11 @@ static void serialise_vsval(u32 value, struct serialiser *s)
 
 static void serialise_ref_id(u32 ref_id, struct serialiser *s)
 {
-	u8 bytes[3];
-	bytes[0] = ref_id >> 16;
-	bytes[1] = ref_id >> 8;
-	bytes[2] = ref_id;
+	u8 bytes[] = {
+		ref_id >> 16,
+		ref_id >> 8,
+		ref_id
+	};
 	serialiser_copy(bytes, sizeof(bytes), s);
 }
 
@@ -316,9 +317,7 @@ static void serialise_bstr(const char *str, struct serialiser *s)
 {
 	u16 len = strlen(str);
 	serialise_u16(len, s);
-	if (s->buf)
-		memcpy(s->buf, str, len);
-	serialiser_add(len, s);
+	serialiser_copy(str, len, s);
 }
 
 static inline size_t start_variable_length_block(struct serialiser *s)
