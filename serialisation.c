@@ -495,7 +495,7 @@ static void serialise_global_data(const struct global_data *g,
 	serialise_u32(type, s);
 	bs = start_variable_length_block(s);
 
-	printf("%08x: s global type %u\n", (unsigned)s->offset, type);
+	DPRINT("%08x: s global type %u\n", (unsigned)s->offset, type);
 
 	switch (type) {
 	case GLOBAL_MISC_STATS:
@@ -1499,7 +1499,7 @@ static int parse_body(struct game_save *save, struct parser *p)
 			parse_u16, p);
 	}
 
-	eprintf("%08zx: Offset table\n", p->offset);
+	DPRINT("%08zx: Offset table\n", p->offset);
 	if (parse_offset_table(p) == -1)
 		return -1;
 	print_offset_table(&p->ctx->offsets);
