@@ -1261,7 +1261,7 @@ static int parse_global_data(struct global_data *out, struct parser *p)
 
 	RETURN_EOD_IF_SHORT(len, p);
 	start_pos = p->offset;
-	printf("%08x: global type %u\n", (unsigned)p->offset, type);
+	DPRINT("%08x: global type %u\n", (unsigned)p->offset, type);
 	switch (type) {
 	case GLOBAL_MISC_STATS:
 		rc = parse_misc_stats(&out->stats, p);
