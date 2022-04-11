@@ -38,6 +38,12 @@ static inline void free_weather(struct weather *w)
 	free(w->data4);
 }
 
+static inline void free_magic_favourites(struct magic_favourites *mf)
+{
+	free(mf->favourites);
+	free(mf->hotkeys);
+}
+
 static inline void free_raw_global(struct raw_global *raw)
 {
 	free(raw->data);
@@ -65,7 +71,7 @@ void global_data_free(struct global_data *gdata)
 	free_raw_global(&gdata->location_meta);
 	free_raw_global(&gdata->quest_static);
 	free_raw_global(&gdata->story_teller);
-	free_raw_global(&gdata->magic_favs);
+	free_magic_favourites(&gdata->magic_favs);
 	free_raw_global(&gdata->player_ctrls);
 	free_raw_global(&gdata->story_event_man);
 	free_raw_global(&gdata->ingredient_shared);

@@ -487,6 +487,19 @@ static void serialise_global_vars(const struct global_vars *v, struct serialiser
 	}
 }
 
+static void serialise_magic_favourites(const struct magic_favourites *mf, struct serialiser *s)
+{
+	u32 i;
+
+	serialise_vsval(mf->num_favourites, s);
+	for (i = 0u; i < mf->num_favourites; ++i)
+		serialise_ref_id(mf->favourites[i], s);
+
+	serialise_vsval(mf->num_hotkeys, s);
+	for (i = 0u; i < mf->num_hotkeys; ++i)
+		serialise_ref_id(mf->hotkeys[i], s);
+}
+
 static void serialise_global_data(const struct global_data *g,
 	enum global_data_type type, struct serialiser *s)
 {
@@ -562,7 +575,7 @@ static void serialise_global_data(const struct global_data *g,
 		serialise_raw_global(&g->story_teller, s);
 		break;
 	case GLOBAL_MAGIC_FAVORITES:
-		serialise_raw_global(&g->magic_favs, s);
+		serialise_magic_favourites(&g->magic_favs, s);
 		break;
 	case GLOBAL_PLAYER_CONTROLS:
 		serialise_raw_global(&g->player_ctrls, s);
@@ -1237,6 +1250,47 @@ static int parse_weather(struct weather *w, u32 len, struct parser *p)
 	return p->eod ? -1 : 0;
 }
 
+static int parse_magic_favourites(struct magic_favourites *mf, struct parser *p)
+{
+	u32 i;
+
+	mf->favourites = NULL;
+	mf->hotkeys = NULL;
+
+	if (parse_vsval(&mf->num_favourites, p) == -1)
+		goto out_error;
+
+	mf->favourites = malloc(sizeof(*mf->favourites) * mf->num_favourites);
+	if (!mf->favourites) {
+		eprintf("parser: no memory\n");
+		goto out_error;
+	}
+
+	for (i = 0u; i < mf->num_favourites; ++i)
+		parse_ref_id(mf->favourites + i, p);
+
+	if (parse_vsval(&mf->num_hotkeys, p) == -1)
+		goto out_error;
+
+	mf->hotkeys = malloc(sizeof(*mf->hotkeys) * mf->num_hotkeys);
+	if (!mf->hotkeys)  {
+		eprintf("parser: no memory\n");
+		goto out_error;
+	}
+
+	for (i = 0u; i < mf->num_hotkeys; ++i)
+		parse_ref_id(mf->hotkeys + i, p);
+
+	if (p->eod)
+		goto out_error;
+
+	return 0;
+out_error:
+	free(mf->favourites);
+	free(mf->hotkeys);
+	return -1;
+}
+
 static int parse_raw_global(struct raw_global *raw, u32 len, struct parser *p)
 {
 	raw->data = malloc(len);
@@ -1327,7 +1381,7 @@ static int parse_global_data(struct global_data *out, struct parser *p)
 		rc = parse_raw_global(&out->story_teller, len, p);
 		break;
 	case GLOBAL_MAGIC_FAVORITES:
-		rc = parse_raw_global(&out->magic_favs, len, p);
+		rc = parse_magic_favourites(&out->magic_favs, p);
 		break;
 	case GLOBAL_PLAYER_CONTROLS:
 		rc = parse_raw_global(&out->player_ctrls, len, p);

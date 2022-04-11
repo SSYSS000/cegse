@@ -171,6 +171,13 @@ struct global_vars {
 	} *vars;
 };
 
+struct magic_favourites {
+	u32 num_favourites;
+	u32 num_hotkeys;
+	ref_t *favourites;
+	ref_t *hotkeys;
+};
+
 struct raw_global {
 	u32 data_sz;
 	char *data;
@@ -200,7 +207,7 @@ struct global_data {
 	struct raw_global location_meta;
 	struct raw_global quest_static; /* Skyrim */
 	struct raw_global story_teller; /* Skyrim */
-	struct raw_global magic_favs;
+	struct magic_favourites magic_favs;
 	struct raw_global player_ctrls;
 	struct raw_global story_event_man;
 	struct raw_global ingredient_shared; /* Skyrim */
