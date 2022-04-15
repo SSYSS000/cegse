@@ -22,7 +22,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <errno.h>
+#include <limits.h>
 #include "types.h"
+#include "defines.h"
 #include "command.h"
 
 /*
@@ -86,4 +89,26 @@ static int cmd_line_tokens(char *restrict line, char **restrict ref_str,
 
 	*argv = realloc(*argv, sizeof(*argv) * argc);
 	return argc;
+}
+
+static int evaluate_ref_str(const char *str, u32 *value)
+{
+	unsigned long converted;
+	char *end;
+
+	errno = 0;
+	converted = strtoul(str, &end, 16);
+
+	if (converted == ULONG_MAX && errno == ERANGE) {
+		eprintf("evaluation error: %s is out of range\n", str);
+		return -1;
+	}
+
+	if (*end != '\0') {
+		eprintf("evaluation error: %s is not a hexadecimal integer\n", str);
+		return -1;
+	}
+
+	*value = converted;
+	return 0;
 }
