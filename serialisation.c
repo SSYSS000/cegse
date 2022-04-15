@@ -84,7 +84,7 @@ struct parser {
 
 	const void *buf;	/* Pointer to the next item for parsing */
 	size_t buf_sz;		/* The number of bytes remaining in buf */
-	size_t offset;		/* File offset */
+	size_t offset;		/* Decompressed file offset */
 
 	/*
 	 * End of data condition.
