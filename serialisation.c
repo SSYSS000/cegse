@@ -62,8 +62,6 @@ struct offset_table {
 struct file_context {
 	struct header header;
 	struct offset_table offsets;
-	enum game *game;	/* points to header.game */
-	u32 *engine;		/* points to header.engine */
 	u32 revision;
 };
 
@@ -99,12 +97,28 @@ static const char skyrim_signature[] =
 static const char fallout4_signature[] =
 {'F','O','4','_','S','A','V','E','G','A','M','E'};
 
+
+static inline void fcontext_set_game(struct file_context *f, enum game game)
+{
+	f->header.game = game;
+}
+
+static inline enum game fcontext_game(const struct file_context *f)
+{
+	return f->header.game;
+}
+
+static inline u32 fcontext_engine(const struct file_context *f)
+{
+	return f->header.engine;
+}
+
 /*
  * Check if edition is Skyrim Special Edition.
  */
 static inline bool is_skse(const struct file_context *f)
 {
-	return *f->game == SKYRIM && *f->engine == 12u;
+	return fcontext_game(f) == SKYRIM && fcontext_engine(f) == 12u;
 }
 
 /*
@@ -112,7 +126,8 @@ static inline bool is_skse(const struct file_context *f)
  */
 static inline bool is_skle(const struct file_context *f)
 {
-	return *f->game == SKYRIM && 7u <= *f->engine && *f->engine <= 9u;
+	return fcontext_game(f) == SKYRIM &&
+		7u <= fcontext_engine(f) && fcontext_engine(f) <= 9u;
 }
 
 /*
@@ -125,7 +140,7 @@ static inline bool can_use_compressor(const struct file_context *f)
 
 static inline bool has_light_plugins(const struct file_context *f)
 {
-	return *f->game == FALLOUT4 || (is_skse(f) && f->revision >= 78u);
+	return fcontext_game(f) == FALLOUT4 || (is_skse(f) && f->revision >= 78u);
 }
 
 /*
@@ -134,7 +149,7 @@ static inline bool has_light_plugins(const struct file_context *f)
  */
 static enum pixel_format which_snapshot_format(const struct file_context *f)
 {
-	if (*f->engine >= 11u)
+	if (fcontext_engine(f) >= 11u)
 		return PXFMT_RGBA;
 
 	return PXFMT_RGB;
@@ -170,16 +185,14 @@ static void print_offset_table(const struct offset_table *t)
 static void init_blank_file_ctx(struct file_context *ctx)
 {
 	memset(ctx, 0, sizeof(*ctx));
-	ctx->game = &ctx->header.game;
-	ctx->engine = &ctx->header.engine;
 }
 
 static void init_file_ctx(const struct game_save *save, struct file_context *ctx)
 {
 	init_blank_file_ctx(ctx);
-	*ctx->game = save->game;
-	*ctx->engine = save->engine;
 	ctx->revision = save->file_format;
+	ctx->header.game = save->game;
+	ctx->header.engine = save->engine;
 	ctx->header.save_num = save->save_num;
 	ctx->header.level = save->level;
 	ctx->header.sex = save->sex;
@@ -389,7 +402,7 @@ static void serialise_plugins(char ** const plugins, u32 count,
 	for (i = 0u; i < count; ++i)
 		serialise_bstr(plugins[i], s);
 
-	if (is_skse(s->ctx) || *s->ctx->game == FALLOUT4) {
+	if (is_skse(s->ctx) || fcontext_game(s->ctx) == FALLOUT4) {
 		/*
 		* idk what is going on, but Bethesda likes to add 2 to the actual
 		* size of plugin info.
@@ -451,7 +464,7 @@ static void serialise_player_location(const struct player_location *pl,
 	serialise_f32(pl->pos_x, s);
 	serialise_f32(pl->pos_y, s);
 	serialise_f32(pl->pos_z, s);
-	if (*s->ctx->game == SKYRIM)
+	if (fcontext_game(s->ctx) == SKYRIM)
 		serialise_u8(pl->unknown, s);
 }
 
@@ -644,7 +657,7 @@ static void serialise_globals1(const struct global_data *g, struct serialiser *s
 	serialise_global_data(g, GLOBAL_AUDIO, s);
 	serialise_global_data(g, GLOBAL_SKY_CELLS, s);
 
-	if (*s->ctx->game == FALLOUT4) {
+	if (fcontext_game(s->ctx) == FALLOUT4) {
 		serialise_global_data(g, GLOBAL_UNKNOWN_9, s);
 		serialise_global_data(g, GLOBAL_UNKNOWN_10, s);
 		serialise_global_data(g, GLOBAL_UNKNOWN_11, s);
@@ -657,23 +670,23 @@ static void serialise_globals2(const struct global_data *g, struct serialiser *s
 	serialise_global_data(g, GLOBAL_COMBAT, s);
 	serialise_global_data(g, GLOBAL_INTERFACE, s);
 	serialise_global_data(g, GLOBAL_ACTOR_CAUSES, s);
-	/*if (*s->ctx->game == SKYRIM)
+	/*if (fcontext_game(s->ctx) == SKYRIM)
 		serialise_global_data(g, GLOBAL_UNKNOWN_104, s);*/
 	serialise_global_data(g, GLOBAL_DETECTION_MANAGER, s);
 	serialise_global_data(g, GLOBAL_LOCATION_METADATA, s);
-	if (*s->ctx->game == SKYRIM) {
+	if (fcontext_game(s->ctx) == SKYRIM) {
 		serialise_global_data(g, GLOBAL_QUEST_STATIC_DATA, s);
 		serialise_global_data(g, GLOBAL_STORYTELLER, s);
 	}
 	serialise_global_data(g, GLOBAL_MAGIC_FAVORITES, s);
 	serialise_global_data(g, GLOBAL_PLAYER_CONTROLS, s);
 	serialise_global_data(g, GLOBAL_STORY_EVENT_MANAGER, s);
-	if (*s->ctx->game == SKYRIM)
+	if (fcontext_game(s->ctx) == SKYRIM)
 		serialise_global_data(g, GLOBAL_INGREDIENT_SHARED, s);
 	serialise_global_data(g, GLOBAL_MENU_CONTROLS, s);
 	serialise_global_data(g, GLOBAL_MENU_TOPIC_MANAGER, s);
 
-	if (*s->ctx->game == FALLOUT4) {
+	if (fcontext_game(s->ctx) == FALLOUT4) {
 		serialise_global_data(g, GLOBAL_UNKNOWN_115, s);
 		serialise_global_data(g, GLOBAL_UNKNOWN_116, s);
 		serialise_global_data(g, GLOBAL_UNKNOWN_117, s);
@@ -689,7 +702,7 @@ static void serialise_globals3(const struct global_data *g, struct serialiser *s
 	serialise_global_data(g, GLOBAL_SYNCHRONISED_ANIMS, s);
 	serialise_global_data(g, GLOBAL_MAIN, s);
 
-	if (*s->ctx->game == FALLOUT4) {
+	if (fcontext_game(s->ctx) == FALLOUT4) {
 		serialise_global_data(g, GLOBAL_UNKNOWN_1006, s);
 		serialise_global_data(g, GLOBAL_UNKNOWN_1007, s);
 	}
@@ -730,7 +743,7 @@ static int serialise_body(const struct game_save *save, struct serialiser *s)
 
 	serialise_u8(s->ctx->revision, s);
 
-	if (*s->ctx->game == FALLOUT4)
+	if (fcontext_game(s->ctx) == FALLOUT4)
 		serialise_bstr(save->game_version, s);
 
 	serialise_plugins(save->plugins, save->num_plugins, s);
@@ -775,7 +788,7 @@ static int serialise_body(const struct game_save *save, struct serialiser *s)
 
 static void serialise_signature(struct serialiser *s)
 {
-	switch (*s->ctx->game) {
+	switch (fcontext_game(s->ctx)) {
 	case SKYRIM:
 		serialiser_copy(skyrim_signature,
 			sizeof(skyrim_signature), s);
@@ -929,7 +942,8 @@ static enum game parse_signature(struct parser *p)
 		game = FALLOUT4;
 		parser_remove(sizeof(fallout4_signature), p);
 	}
-	*p->ctx->game = game;
+
+	fcontext_set_game(p->ctx, game);
 	return game;
 }
 
@@ -1073,7 +1087,7 @@ static int parse_offset_table(struct parser *p)
 	parse_u32(&table->num_globals3, p);
 	parse_u32(&table->num_change_form, p);
 
-	if (*p->ctx->game == SKYRIM) {
+	if (fcontext_game(p->ctx) == SKYRIM) {
 		/*
 		 * Globals 3 table count is bugged (Bethesda's design) and
 		 * is short by 1.
@@ -1209,7 +1223,7 @@ static int parse_player_location(struct player_location *pl, struct parser *p)
 	parse_f32(&pl->pos_x, p);
 	parse_f32(&pl->pos_y, p);
 	parse_f32(&pl->pos_z, p);
-	if (*p->ctx->game == SKYRIM)
+	if (fcontext_game(p->ctx) == SKYRIM)
 		parse_u8(&pl->unknown, p);
 	return p->eod ? -1 : 0;
 }
@@ -1542,7 +1556,7 @@ static int parse_body(struct game_save *save, struct parser *p)
 		return -1;
 	save->file_format = p->ctx->revision;
 
-	if (*p->ctx->game == FALLOUT4)
+	if (fcontext_game(p->ctx) == FALLOUT4)
 		parse_bstr(save->game_version, sizeof(save->game_version), p);
 
 	parse_u32(&next_len, p);
@@ -1620,8 +1634,8 @@ static int parse_save_data(struct game_save *save, struct parser *p)
 	parse_u32(&bs, p);
 	if (parse_header(p) == -1)
 		return -1;
-	save->game = *p->ctx->game;
-	save->engine = *p->ctx->engine;
+	save->game = fcontext_game(p->ctx);
+	save->engine = fcontext_engine(p->ctx);
 	save->save_num = p->ctx->header.save_num;
 	save->level = p->ctx->header.level;
 	save->sex = p->ctx->header.sex;
