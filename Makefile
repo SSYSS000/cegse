@@ -5,7 +5,8 @@ OBJ_DIR := build
 SRC_FILES := $(wildcard *.c)
 TARGET    := cegse
 
-TEST_SRC_FILES := $(subst main.c,,$(SRC_FILES)) $(wildcard tests/*.c)
+TEST_SRC_FILES := $(wildcard tests/*.c)
+TEST_SRC_FILES += $(filter-out main.c serialisation.c,$(SRC_FILES))
 TEST_TARGET    := test
 
 OBJS      := $(SRC_FILES:%=$(OBJ_DIR)/%.o)
