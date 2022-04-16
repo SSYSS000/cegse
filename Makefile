@@ -1,4 +1,4 @@
-CFLAGS  := -Iinclude -Wall -Wextra -g -DDEBUGGING=1
+CFLAGS  := -Iinclude -Wall -Wextra -g -DDEBUGGING=1 -Wno-address-of-packed-member
 LIBS    := -llz4 -lz
 OBJ_DIR := build
 
