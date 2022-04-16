@@ -22,16 +22,21 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef CEGSE_COMPRESSION_H
 #define CEGSE_COMPRESSION_H
 
-enum compressor {
-	COMPRESS_NONE,
-	COMPRESS_ZLIB,
-	COMPRESS_LZ4,
-};
+/*
+ * Return compressed size on success or -1 on failure.
+ */
+int lz4_compress(const void *src, void *dest, int src_size, int dest_size);
 
-int cegse_compress(const void *src, void *dest, int src_size, int dest_size,
-	enum compressor method);
+int zlib_compress(const void *src, void *dest, int src_size, int dest_size);
 
-int cegse_decompress(const void *src, void *dest, int src_size, int dest_size,
-	enum compressor method);
+/*
+ * Return uncompressed size on success or -1 on failure.
+ */
+int lz4_decompress(const void *src, void *dest, int src_size, int dest_size);
+
+/*
+ * Return uncompressed size on success or -1 on failure.
+ */
+int zlib_decompress(const void *src, void *dest, int src_size, int dest_size);
 
 #endif /* CEGSE_COMPRESSION_H */

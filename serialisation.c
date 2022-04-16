@@ -91,6 +91,12 @@ struct parser {
 	unsigned eod;
 };
 
+enum compressor {
+	COMPRESS_NONE,
+	COMPRESS_ZLIB,
+	COMPRESS_LZ4,
+};
+
 static const char skyrim_signature[] =
 {'T','E','S','V','_','S','A','V','E','G','A','M','E'};
 
@@ -838,8 +844,15 @@ static int serialise_save_data(const struct game_save *save,
 	bs = start_variable_length_block(s);
 
 	eprintf("serialiser: compressed at 0x%08zx\n", s->offset);
-	com_len = cegse_compress(body, s->buf, body_s.n_written,
-		body_s.n_written, s->ctx->header.compressor);
+	switch (s->ctx->header.compressor) {
+	case COMPRESS_LZ4:
+		com_len = lz4_compress(body, s->buf, body_s.n_written, body_s.n_written);
+		break;
+	case COMPRESS_ZLIB:
+		com_len = zlib_compress(body, s->buf, body_s.n_written, body_s.n_written);
+		break;
+	}
+
 	free(body);
 	if (com_len == -1)
 		return -1;
@@ -1665,13 +1678,20 @@ static int parse_save_data(struct game_save *save, struct parser *p)
 		return -1;
 	}
 
-	rc = cegse_decompress(p->buf, decompressed, com_len, uncom_len,
-		p->ctx->header.compressor);
+	switch (p->ctx->header.compressor) {
+	case COMPRESS_LZ4:
+		rc = lz4_decompress(p->buf, decompressed, com_len, uncom_len);
+		break;
+	case COMPRESS_ZLIB:
+		rc = zlib_decompress(p->buf, decompressed, com_len, uncom_len);
+		break;
+	}
+
 	if (rc == -1) {
 		free(decompressed);
 		return -1;
 	}
-
+	uncom_len = rc;
 	init_parser(decompressed, uncom_len, p->offset, p->ctx, &body_p);
 	parser_remove(com_len, p);
 
