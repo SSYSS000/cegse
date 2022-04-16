@@ -1011,7 +1011,7 @@ static int parse_vsval(u32 *value, struct parser *p)
 	return 0;
 }
 
-static int parse_bstr(char *dest, size_t n, struct parser *p)
+static int parse_bstr(char *dest, size_t dest_size, struct parser *p)
 {
 	u32 bs_len, copy_len;
 
@@ -1020,7 +1020,7 @@ static int parse_bstr(char *dest, size_t n, struct parser *p)
 
 	RETURN_EOD_IF_SHORT(bs_len, p);
 
-	copy_len = (n > bs_len) ? bs_len : (n - 1);
+	copy_len = (dest_size > bs_len) ? bs_len : (dest_size - 1);
 	memcpy(dest, p->buf, copy_len);
 	dest[copy_len] = '\0';
 	parser_remove(bs_len, p);
