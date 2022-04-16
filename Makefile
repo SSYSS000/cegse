@@ -1,26 +1,29 @@
-CFLAGS = -Iinclude -Wall -Wextra -g -DDEBUGGING=1
-LIBS = -llz4 -lz
+CFLAGS  := -Iinclude -Wall -Wextra -g -DDEBUGGING=1
+LIBS    := -llz4 -lz
+OBJ_DIR := build
 
-OBJS = 	snapshot.o \
-	game_save.o \
-	compression.o \
-	global_data.o \
-	serialisation.o \
+SRC_FILES := $(wildcard *.c)
+TARGET    := cegse
 
-TARGET = cegse
+TEST_SRC_FILES := $(subst main.c,,$(SRC_FILES)) $(wildcard tests/*.c)
+TEST_TARGET    := test
 
-%.o: %.c
-	$(CC) -c -o $@ $< $(CFLAGS)
-
-$(TARGET): main.o $(OBJS)
-	$(CC) -o $(TARGET) main.o $(OBJS) $(CFLAGS) $(LIBS)
+OBJS      := $(SRC_FILES:%=$(OBJ_DIR)/%.o)
+TEST_OBJS := $(TEST_SRC_FILES:%=$(OBJ_DIR)/%.o)
 
 .PHONY: clean
 
+$(TARGET): $(OBJS)
+	$(CC) -o $(TARGET) $(OBJS) $(CFLAGS) $(LIBS)
+
+$(TEST_TARGET): $(TEST_OBJS)
+	$(CC) -o $(TEST_TARGET) $(TEST_OBJS) $(LIBS) $(CFLAGS)
+
+$(OBJ_DIR)/%.c.o: %.c | $(OBJ_DIR)
+	$(CC) -c -o $@ $< $(CFLAGS)
+
+$(OBJ_DIR):
+	mkdir $@ $@/tests
+
 clean:
-	rm -f $(OBJS) $(TARGET)
-
-TEST_FILES=$(wildcard tests/*.c)
-
-test: $(TEST_FILES) $(OBJS)
-	$(CC) -o test $(TEST_FILES) $(OBJS) $(LIBS) $(CFLAGS)
+	rm -f $(OBJS) $(TARGET) $(TEST_OBJS) $(TEST_TARGET)

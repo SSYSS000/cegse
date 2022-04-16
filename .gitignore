@@ -2,6 +2,7 @@
 samples
 
 # Build files
+build
 cegse
 test
 *.o
