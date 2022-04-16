@@ -25,7 +25,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <unistd.h>
-#include <errno.h>
 #include "serialisation.h"
 #include "compression.h"
 #include "snapshot.h"
@@ -865,33 +864,6 @@ static ssize_t serialise_to_buffer(void *data, const struct game_save *save)
 }
 
 int serialise_to_disk(int fd, const struct game_save *save)
-{
-	void *buffer;
-	ssize_t serialised_len;
-	serialised_len = serialise_to_buffer(NULL, save);
-
-	lseek(fd, serialised_len - 1, SEEK_SET);
-	write(fd, "", 1);
-
-	buffer = mmap(NULL, serialised_len, PROT_WRITE, MAP_PRIVATE, fd, 0);
-	if (buffer == MAP_FAILED) {
-		eprintf("serialiser: %s\n", strerror(errno));
-		return -1;
-	}
-
-	if ((serialised_len = serialise_to_buffer(buffer, save)) == -1) {
-		munmap(buffer, serialised_len);
-		return -1;
-	}
-
-	if (msync(buffer, serialised_len, MS_SYNC) == -1) {
-		eprintf("serialiser: %s\n", strerror(errno));
-	}
-	munmap(buffer, serialised_len);
-	return 0;
-}
-
-int serialise_to_fifo(int fd, const struct game_save *save)
 {
 	void *buffer;
 	ssize_t serialised_len;
