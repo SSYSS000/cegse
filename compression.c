@@ -47,7 +47,7 @@ int lz4_decompress(const void *src, void *dest, int src_size, int dest_size)
 {
 	int rc = LZ4_decompress_safe(src, dest, src_size, dest_size);
 	if (rc < 0) {
-		eprintf("lz4_compress: data malformed\n");
+		eprintf("lz4_decompress: data malformed\n");
 		return -1;
 	}
 	return rc;
