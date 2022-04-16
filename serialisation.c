@@ -183,14 +183,9 @@ static void print_offset_table(const struct offset_table *t)
 	eprintf("%08x: Unknown table\n", t->off_unknown_table);
 }
 
-static void init_blank_file_ctx(struct file_context *ctx)
-{
-	memset(ctx, 0, sizeof(*ctx));
-}
-
 static void init_file_ctx(const struct game_save *save, struct file_context *ctx)
 {
-	init_blank_file_ctx(ctx);
+	memset(ctx, 0, sizeof(*ctx));
 	ctx->revision = save->file_format;
 	ctx->header.game = save->game;
 	ctx->header.engine = save->engine;
@@ -1717,7 +1712,7 @@ static int parse_save_data(struct game_save *save, struct parser *p)
 
 int parse_file_header_only(int fd, struct header *header)
 {
-	struct file_context ctx;
+	struct file_context ctx = {0};
 	struct parser p;
 	char buf[1024];
 	u32 header_sz;
@@ -1728,7 +1723,6 @@ int parse_file_header_only(int fd, struct header *header)
 		return -1;
 	}
 
-	init_blank_file_ctx(&ctx);
 	init_parser(buf, in_len, 0, &ctx, &p);
 
 	if (parse_signature(&p) == (enum game)-1) {
@@ -1753,7 +1747,7 @@ static int parse_file_from_pipe(int fd, struct game_save *out)
 	size_t buf_sz = 0u;
 	void *buf = NULL;
 	void *temp = NULL;
-	struct file_context ctx;
+	struct file_context ctx = {0};
 	struct parser p;
 
 	while (1) {
@@ -1778,7 +1772,6 @@ static int parse_file_from_pipe(int fd, struct game_save *out)
 		return -1;
 	}
 
-	init_blank_file_ctx(&ctx);
 	init_parser(buf, total_read, 0, &ctx, &p);
 
 	if (parse_save_data(out, &p) == -1) {
@@ -1795,7 +1788,7 @@ static int parse_file_from_pipe(int fd, struct game_save *out)
 
 static int parse_file_from_disk(int fd, off_t size, struct game_save *out)
 {
-	struct file_context ctx;
+	struct file_context ctx = {0};
 	struct parser p;
 	void *contents;
 	int rc;
@@ -1807,7 +1800,6 @@ static int parse_file_from_disk(int fd, off_t size, struct game_save *out)
 	}
 	madvise(contents, size, MADV_SEQUENTIAL);
 
-	init_blank_file_ctx(&ctx);
 	init_parser(contents, size, 0, &ctx, &p);
 
 	rc = parse_save_data(out, &p);
