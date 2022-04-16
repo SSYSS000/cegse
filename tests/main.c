@@ -33,7 +33,7 @@ int main()
 	int result;
 
 	for (i = &__start_tests; i != &__stop_tests; ++i) {
-		eprintf("running %s\n", i->name);
+		eprintf("%s: %s ...\n", i->file, i->name);
 
 		result = i->test();
 
