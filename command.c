@@ -28,66 +28,75 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "defines.h"
 #include "command.h"
 
+static char *cut_tail(char *str, int delimiter)
+{
+	char *boundary = strrchr(str, delimiter);
+	if (!boundary)
+		return NULL;
+
+	*boundary = '\0';
+	return boundary + 1;
+}
+
 /*
  * Split a command line into tokens. This function modifies line argument.
  * Command line format: [reference.]function_name [arg...]
  *
- * ref_str is a pointer to the referred object or NULL if the
- * command does not have one.
+ * The first element of tokens is the reference or NULL if the line
+ * doesn't have one. The second element is the function name.
+ * The rest is function arguments.
  *
- * argv is a pointer to a dynamically allocated (malloc) array of pointers to
+ * tokens is a pointer to a dynamically allocated (malloc) array of pointers to
  * command line arguments in line argument and must be freed with free().
  *
- * Return the number of arguments in argv.
+ * Return the number of elements in tokens.
  */
-static int cmd_line_tokens(char *restrict line, char **restrict ref_str,
-	char ***restrict argv)
+static int cmd_line_tokens(char *restrict line, char ***restrict tokens)
 {
-	char **reargv;
 	char *save_ptr = NULL;
-	char *function = NULL;
-	size_t argv_cap = 6u;
-	int argc = 0;
+	char *function;
+	char **_tokens;
 	char *token;
+	size_t cap = 8u;
+	int argc;
 
 	token = strtok_r(line, " ", &save_ptr);
 	if (!token) {
-		*argv = NULL;
+		*tokens = NULL;
 		return 0;
 	}
 
-	if ((*argv = malloc(sizeof(*argv) * argv_cap)) == NULL)
+	if ((_tokens = malloc(sizeof(*tokens) * cap)) == NULL)
 		return -1;
 
-	function = strchr(token, '.');
+	function = cut_tail(token, '.');
 	if (function) {
-		*function = '\0';
-		function++;
-		*ref_str = token;
+		_tokens[0] = function;
+		_tokens[1] = token;
 	}
 	else {
-		function = token;
-		*ref_str = NULL;
+		_tokens[0] = token;
+		_tokens[1] = NULL;
 	}
 
-	(*argv)[argc++] = function;
+	argc = 2;
 
 	while ((token = strtok_r(NULL, " ", &save_ptr)) != NULL) {
-		if (argv_cap < (argc + 1)) {
+		if (cap < (argc + 1)) {
 			/* Double argv's capacity. */
-			argv_cap *= 2u;
-			reargv = realloc(*argv, sizeof(*argv) * argv_cap);
-			if (!reargv) {
-				free(*argv);
+			cap *= 2u;
+			*tokens = realloc(_tokens, sizeof(_tokens) * cap);
+			if (!*tokens) {
+				free(_tokens);
 				return -1;
 			}
-			*argv = reargv;
+			_tokens = *tokens;
 		}
 
-		(*argv)[argc++] = token;
+		_tokens[argc++] = token;
 	}
 
-	*argv = realloc(*argv, sizeof(*argv) * argc);
+	*tokens = realloc(_tokens, sizeof(_tokens) * argc);
 	return argc;
 }
 
