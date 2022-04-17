@@ -39,13 +39,23 @@ struct {
 	{"", 0, {}}
 };
 
+/*
+ * Compare strings a and b, returning zero if they are equal or if they are both
+ * NULL. Otherwise, return a non-zero.
+ */
+static int nullstrcmp(const char *a, const char *b)
+{
+	return a && b ? strcmp(a, b) : a != b;
+}
+
 static int token_test(void)
 {
-	int rc = TEST_SUCCESS;
+	int n_tokens, j, rc;
 	char **tokens;
-	int n_tokens;
+	unsigned i;
 
-	for (unsigned i = 0u; i < ARRAY_SIZE(cases); ++i) {
+	rc = TEST_SUCCESS;
+	for (i = 0u; i < ARRAY_SIZE(cases); ++i) {
 		n_tokens = cmd_line_tokens(cases[i].line, &tokens);
 		if (n_tokens == -1) {
 			ptest_error("case %u: could not split into tokens\n", i);
@@ -60,8 +70,8 @@ static int token_test(void)
 			rc = TEST_FAILURE;
 		}
 
-		for (int j = 0; j < MIN(n_tokens, cases[i].argc); ++j) {
-			if (strcmp(tokens[j] ?: "", cases[i].argv[j] ?: "") != 0) {
+		for (j = 0; j < MIN(n_tokens, cases[i].argc); ++j) {
+			if (nullstrcmp(tokens[j], cases[i].argv[j])) {
 				ptest_error(
 				"case %u: token mismatch. "
 				"expected \"%s\", got \"%s\"\n",
