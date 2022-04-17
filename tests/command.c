@@ -30,6 +30,7 @@ struct {
 } cases[] = {
 	{"player.additem f 1000",  4, {"additem", "player", "f", "1000"}},
 	{"    player.additem   F   1000", 4, {"additem", "player", "F", "1000"}},
+	{"pre.player.additem f 1000",  4, {"additem", "pre.player", "f", "1000"}},
 	{"player. dditem f 1000",  5, {"", "player", "dditem", "f", "1000"}},
 	{"player .additem f 1000", 5, {"player", NULL, ".additem", "f", "1000"}},
 	{".additem f 1000", 4, {"additem", "", "f", "1000"}},
