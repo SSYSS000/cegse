@@ -57,8 +57,8 @@ static int cmd_line_tokens(char *restrict line, char ***restrict tokens)
 	char *function;
 	char **_tokens;
 	char *token;
-	size_t cap = 8u;
-	int argc;
+	int cap = 8;
+	int n_tokens;
 
 	token = strtok_r(line, " ", &save_ptr);
 	if (!token) {
@@ -79,12 +79,12 @@ static int cmd_line_tokens(char *restrict line, char ***restrict tokens)
 		_tokens[1] = NULL;
 	}
 
-	argc = 2;
+	n_tokens = 2;
 
 	while ((token = strtok_r(NULL, " ", &save_ptr)) != NULL) {
-		if (cap < (argc + 1)) {
-			/* Double argv's capacity. */
-			cap *= 2u;
+		if (cap < (n_tokens + 1)) {
+			/* Double tokens' capacity. */
+			cap *= 2;
 			*tokens = realloc(_tokens, sizeof(_tokens) * cap);
 			if (!*tokens) {
 				free(_tokens);
@@ -93,11 +93,11 @@ static int cmd_line_tokens(char *restrict line, char ***restrict tokens)
 			_tokens = *tokens;
 		}
 
-		_tokens[argc++] = token;
+		_tokens[n_tokens++] = token;
 	}
 
-	*tokens = realloc(_tokens, sizeof(_tokens) * argc);
-	return argc;
+	*tokens = realloc(_tokens, sizeof(_tokens) * n_tokens);
+	return n_tokens;
 }
 
 static int evaluate_ref_str(const char *str, u32 *value)
