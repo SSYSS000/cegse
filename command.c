@@ -42,8 +42,8 @@ static char *cut_tail(char *str, int delimiter)
  * Split a command line into tokens. This function modifies line argument.
  * Command line format: [reference.]function_name [arg...]
  *
- * The first element of tokens is the reference or NULL if the line
- * doesn't have one. The second element is the function name.
+ * The first element of tokens is the function name. The second element is
+ * the the reference or NULL if it's not present.
  * The rest is function arguments.
  *
  * tokens is a pointer to a dynamically allocated (malloc) array of pointers to
