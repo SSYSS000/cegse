@@ -22,55 +22,55 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "tests.h"
 #include "../command.c"
 
+
+struct {
+	char line[100];
+	int argc;
+	const char *argv[10];
+} cases[] = {
+	{"player.additem f 1000",  4, {"additem", "player", "f", "1000"}},
+	{"    player.additem   F   1000", 4, {"additem", "player", "F", "1000"}},
+	{"player. dditem f 1000",  5, {"", "player", "dditem", "f", "1000"}},
+	{"player .additem f 1000", 5, {"player", NULL, ".additem", "f", "1000"}},
+	{".additem f 1000", 4, {"additem", "", "f", "1000"}},
+	{"additem f 1000",  4, {"additem", NULL, "f", "1000"}},
+	{"tcl", 2, {"tcl", NULL}},
+	{"", 0, {}}
+};
+
 static int token_test(void)
 {
-	int i, rc = TEST_SUCCESS;
+	int rc = TEST_SUCCESS;
+	char **tokens;
+	int n_tokens;
 
-	struct {
-		char line[100];
-		int argc;
-		const char *argv[10];
-	} cases[] = {
-		{"player.additem f 1000",  4, {"additem", "player", "f", "1000"}},
-		{"    player.additem   F   1000", 4, {"additem", "player", "F", "1000"}},
-		{"player. dditem f 1000",  5, {"", "player", "dditem", "f", "1000"}},
-		{"player .additem f 1000", 5, {"player", NULL, ".additem", "f", "1000"}},
-		{".additem f 1000", 4, {"additem", "", "f", "1000"}},
-		{"additem f 1000",  4, {"additem", NULL, "f", "1000"}},
-		{"tcl", 2, {"tcl", NULL}},
-		{"", 0, {}}
-	};
-
-	char **argv;
-	int argc;
-
-	for (i = 0; i < ARRAY_SIZE(cases); ++i) {
-		argc = cmd_line_tokens(cases[i].line, &argv);
-		if (argc == -1) {
-			ptest_error("case %d: could not split into tokens\n", i);
+	for (unsigned i = 0u; i < ARRAY_SIZE(cases); ++i) {
+		n_tokens = cmd_line_tokens(cases[i].line, &tokens);
+		if (n_tokens == -1) {
+			ptest_error("case %u: could not split into tokens\n", i);
 			rc = TEST_FAILURE;
 			continue;
 		}
 
-		if (argc != cases[i].argc) {
+		if (n_tokens != cases[i].argc) {
 			ptest_error(
-			"case %d: invalid number of arguments. "
-			"expected %d, got %d\n", i, cases[i].argc, argc);
+			"case %u: invalid number of arguments. "
+			"expected %d, got %d\n", i, cases[i].argc, n_tokens);
 			rc = TEST_FAILURE;
 		}
 
-		for (int j = 0; j < MIN(argc, cases[i].argc); ++j) {
-			if (strcmp(argv[j] ?: "", cases[i].argv[j] ?: "") != 0) {
+		for (int j = 0; j < MIN(n_tokens, cases[i].argc); ++j) {
+			if (strcmp(tokens[j] ?: "", cases[i].argv[j] ?: "") != 0) {
 				ptest_error(
-				"case %d: token mismatch. "
+				"case %u: token mismatch. "
 				"expected \"%s\", got \"%s\"\n",
-				i, cases[i].argv[j], argv[j]);
+				i, cases[i].argv[j], tokens[j]);
 				rc = TEST_FAILURE;
 			}
 		}
 
 
-		free(argv);
+		free(tokens);
 	}
 
 	return rc;
