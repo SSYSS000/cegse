@@ -47,3 +47,12 @@ void *xcalloc(size_t nmemb, size_t size)
 	}
 	return mem;
 }
+
+void *xrealloc(void *ptr, size_t size)
+{
+	void *mem = realloc(ptr, size);
+	if (!mem) {
+		die("Out of memory\n");
+	}
+	return mem;
+}
