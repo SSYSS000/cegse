@@ -739,13 +739,6 @@ int serialise_to_disk(int fd, const struct game_save *save)
 	return 0;
 }
 
-#define RETURN_EOD_IF_SHORT(size, p) do {					\
-	if ((p)->buf_sz < (size)) {						\
-		(p)->eod = 1;							\
-		return -1;							\
-	}									\
-} while (0)
-
 void init_parser(const void *data, size_t data_sz, size_t offset,
 	struct file_context *ctx, struct parser *p)
 {
@@ -766,7 +759,10 @@ static inline void parser_remove(size_t n, struct parser *p)
 
 static int parser_copy(void *dest, u32 n, struct parser *p)
 {
-	RETURN_EOD_IF_SHORT(n, p);
+	if (p->buf_sz < n) {
+		p->eod = 1;
+		return -1;
+	}
 	memcpy(dest, p->buf, n);
 	parser_remove(n, p);
 	return 0;
@@ -777,7 +773,10 @@ static enum game parse_signature(struct parser *p)
 	enum game game = (enum game)-1;
 
 	/* 32 should be more than enough to cover all signatures. */
-	RETURN_EOD_IF_SHORT(32, p);
+	if (p->buf_sz < 32) {
+		p->eod = 1;
+		return -1;
+	}
 
 	if (!memcmp(p->buf, skyrim_signature, sizeof(skyrim_signature))) {
 		game = SKYRIM;
@@ -872,8 +871,6 @@ static int parse_bstr(char *dest, size_t dest_size, struct parser *p)
 
 	if (parse_u16(&bs_len, p) == -1)
 		return -1;
-
-	RETURN_EOD_IF_SHORT(bs_len, p);
 
 	copy_len = (dest_size > bs_len) ? bs_len : (dest_size - 1);
 	DWARN_IF(copy_len != bs_len,
@@ -1154,10 +1151,8 @@ static int parse_global_data(struct global_data *out, struct parser *p)
 	if (p->eod)
 		return -1;
 
-	RETURN_EOD_IF_SHORT(len, p);
 	start_pos = p->offset;
 	DPRINT("%08x: global type %u\n", (unsigned)p->offset, type);
-	out->type = type;
 	switch (type) {
 	case GLOBAL_MISC_STATS:
 		rc = parse_misc_stats(&out->object.stats, p);
@@ -1180,6 +1175,7 @@ static int parse_global_data(struct global_data *out, struct parser *p)
 		out->object.raw.size = len;
 		rc = parser_copy(out->object.raw.data, len, p);
 	}
+	out->type = type;
 
 	if (rc == -1)
 		return -1;
@@ -1233,10 +1229,13 @@ static int parse_change_form(struct change_form *cf, struct parser *p)
 	/* Don't remove length information yet. */
 	/* cf->type &= 0x3fu; */
 
-	RETURN_EOD_IF_SHORT(cf->length1, p);
-
 	cf->data = xmalloc(cf->length1);
-	parser_copy(cf->data, cf->length1, p);
+	if (parser_copy(cf->data, cf->length1, p) < 0) {
+		free(cf->data);
+		cf->data = NULL;
+		return -1;
+	}
+
 	return 0;
 }
 
@@ -1387,7 +1386,10 @@ static int parse_save_data(struct game_save *save, struct parser *p)
 	if (p->eod)
 		return -1;
 
-	RETURN_EOD_IF_SHORT(com_len, p);
+	if (p->buf_sz < com_len) {
+		p->eod = 1;
+		return -1;
+	}
 
 	decompressed = xmalloc(uncom_len);
 
