@@ -250,42 +250,40 @@ static void serialiser_copy(const void *data, size_t len, struct serialiser *s)
 	serialiser_add(len, s);
 }
 
-static void serialise_u8(u32 value, struct serialiser *s)
+static void serialiser_fill(int c, size_t n, struct serialiser *s)
 {
 	if (s->buf)
-		*(u8 *)s->buf = value;
-	serialiser_add(sizeof(u8), s);
+		memset(s->buf, c, n);
+	serialiser_add(n, s);
+}
+
+static void serialise_u8(u32 value, struct serialiser *s)
+{
+	u8 v = value;
+	serialiser_copy(&v, sizeof v, s);
 }
 
 static void serialise_u16(u32 value, struct serialiser *s)
 {
 	u16 swapped = htole16(value);
-	if (s->buf)
-		*(u16 *)s->buf = swapped;
-	serialiser_add(sizeof(swapped), s);
+	serialiser_copy(&swapped, sizeof swapped, s);
 }
 
 static void serialise_u32(u32 value, struct serialiser *s)
 {
 	value = htole32(value);
-	if (s->buf)
-		*(u32 *)s->buf = value;
-	serialiser_add(sizeof(value), s);
+	serialiser_copy(&value, sizeof value, s);
 }
 
 static void serialise_u64(u64 value, struct serialiser *s)
 {
 	value = htole64(value);
-	if (s->buf)
-		*(u64 *)s->buf = value;
-	serialiser_add(sizeof(value), s);
+	serialiser_copy(&value, sizeof value, s);
 }
 
 static void serialise_f32(f32 value, struct serialiser *s)
 {
-	if (s->buf)
-		*(f32 *)s->buf = value;
-	serialiser_add(sizeof(value), s);
+	serialiser_copy(&value, sizeof value, s);
 }
 
 static inline void serialise_filetime(FILETIME value, struct serialiser *s)
@@ -300,6 +298,7 @@ static inline void serialise_filetime(FILETIME value, struct serialiser *s)
 static void serialise_vsval(u32 value, struct serialiser *s)
 {
 	unsigned i, hibytes;
+	u8 buffer[3];
 
 	DWARN_IF(value > VSVAL_MAX, "%u becomes %u\n",
 	       (unsigned)value, (unsigned)(value % (VSVAL_MAX + 1)));
@@ -308,13 +307,11 @@ static void serialise_vsval(u32 value, struct serialiser *s)
 	hibytes = (value >= 0x100u) << (value >= 0x10000u);
 	value |= hibytes;
 
-	if (s->buf) {
-		for (i = 0u; i <= hibytes; ++i) {
-			((u8 *)s->buf)[i] = value >> i * 8u;
-		}
+	for (i = 0u; i <= hibytes; ++i) {
+		buffer[i] = value >> i * 8u;
 	}
 
-	serialiser_add(hibytes + 1, s);
+	serialiser_copy(buffer, i, s);
 }
 
 static void serialise_ref_id(u32 ref_id, struct serialiser *s)
@@ -387,9 +384,7 @@ static void serialise_offset_table(struct serialiser *s)
 	serialise_u32(table->num_globals2, s);
 	serialise_u32(table->num_globals3, s);
 	serialise_u32(table->num_change_form, s);
-	if (s->buf)
-		memset(s->buf, 0, sizeof(u32[15]));
-	serialiser_add(sizeof(u32[15]), s);
+	serialiser_fill(0, sizeof(u32[15]), s);
 }
 
 static void serialise_plugins(char ** const plugins, u32 count,
@@ -957,42 +952,53 @@ static enum game parse_signature(struct parser *p)
 
 static int parse_u8(u32 *value, struct parser *p)
 {
-	RETURN_EOD_IF_SHORT(sizeof(u8), p);
-	*value = *(const u8 *)p->buf;
-	parser_remove(sizeof(u8), p);
-	return 0;
+	u8 _value;
+	if (parser_copy(&_value, sizeof _value, p) >= 0) {
+		*value = _value;
+		return sizeof _value;
+	}
+	else {
+		return -1;
+	}
 }
 
 static int parse_u16(u32 *value, struct parser *p)
 {
-	RETURN_EOD_IF_SHORT(sizeof(u16), p);
-	*value = le16toh(*(u16 *)p->buf);
-	parser_remove(sizeof(u16), p);
-	return 0;
+	u16 _value;
+	if (parser_copy(&_value, sizeof _value, p) >= 0) {
+		*value = le16toh(_value);
+		return sizeof _value;
+	}
+	else {
+		return -1;
+	}
 }
 
 static int parse_u32(u32 *value, struct parser *p)
 {
-	RETURN_EOD_IF_SHORT(sizeof(*value), p);
-	*value = le32toh(*(u32 *)p->buf);
-	parser_remove(sizeof(*value), p);
-	return 0;
+	if (parser_copy(value, sizeof *value, p) >= 0) {
+		*value = le32toh(*value);
+		return sizeof *value;
+	}
+	else {
+		return -1;
+	}
 }
 
 static int parse_u64(u64 *value, struct parser *p)
 {
-	RETURN_EOD_IF_SHORT(sizeof(*value), p);
-	*value = le64toh(*(u64 *)p->buf);
-	parser_remove(sizeof(*value), p);
-	return 0;
+	if (parser_copy(value, sizeof *value, p) >= 0) {
+		*value = le64toh(*value);
+		return sizeof *value;
+	}
+	else {
+		return -1;
+	}
 }
 
 static int parse_f32(f32 *value, struct parser *p)
 {
-	RETURN_EOD_IF_SHORT(sizeof(*value), p);
-	*value = *(f32 *)p->buf;
-	parser_remove(sizeof(*value), p);
-	return 0;
+	return parser_copy(value, sizeof *value, p);
 }
 
 static inline int parse_filetime(FILETIME *value, struct parser *p)
@@ -1003,20 +1009,19 @@ static inline int parse_filetime(FILETIME *value, struct parser *p)
 static int parse_vsval(u32 *value, struct parser *p)
 {
 	unsigned i;
+	u8 byte;
 
 	/* Read 1 to 3 bytes into value. */
 	*value = 0u;
 	for (i = 0u; i <= (*value & 0x3u); ++i) {
-		if (i == p->buf_sz) {
-			p->eod = 1;
+		if (parser_copy(&byte, sizeof byte, p) == -1)
 			return -1;
-		}
-		*value |= ((u8 *)p->buf)[i] << i * 8u;
+
+		*value |= byte << i * 8u;
 	}
 
-	parser_remove(i, p);
 	*value >>= 2;
-	return 0;
+	return i;
 }
 
 static int parse_bstr(char *dest, size_t dest_size, struct parser *p)
@@ -1029,32 +1034,37 @@ static int parse_bstr(char *dest, size_t dest_size, struct parser *p)
 	RETURN_EOD_IF_SHORT(bs_len, p);
 
 	copy_len = (dest_size > bs_len) ? bs_len : (dest_size - 1);
-	memcpy(dest, p->buf, copy_len);
-	dest[copy_len] = '\0';
-	parser_remove(bs_len, p);
-
 	DWARN_IF(copy_len != bs_len,
 	       "truncated bstring due to insufficient buffer size\n");
 
+	if (parser_copy(dest, copy_len, p) == -1) {
+		return -1;
+	}
+
+	dest[copy_len] = '\0';
+	parser_remove(bs_len - copy_len, p);
 	return copy_len;
 }
 
 static int parse_bstr_m(char **string, struct parser *p)
 {
+	char *_string;
 	u32 len;
 
 	if (parse_u16(&len, p) == -1)
 		return -1;
 
-	RETURN_EOD_IF_SHORT(len, p);
-
-	*string = malloc(len + 1u);
-	if (!*string)
+	_string = malloc(len + 1u);
+	if (!_string)
 		return -1;
 
-	memcpy(*string, p->buf, len);
-	(*string)[len] = '\0';
-	parser_remove(len, p);
+	if (parser_copy(_string, len, p) < 0) {
+		free(_string);
+		return -1;
+	}
+
+	_string[len] = '\0';
+	*string = _string;
 	return len;
 }
 
