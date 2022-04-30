@@ -673,11 +673,8 @@ static int serialise_save_data(const struct game_save *save,
 		serialiser_add(2*sizeof(u32) + body_s.n_written, s);
 		return 0;
 	}
-	if ((body = malloc(body_s.n_written)) == NULL) {
-		eprintf("serialiser: no memory\n");
-		return -1;
-	}
 
+	body = xmalloc(body_s.n_written);
 	init_serialiser(body, s->offset, s->ctx, &body_s);
 	if (serialise_body(save, &body_s) == -1) {
 		free(body);
@@ -726,11 +723,7 @@ int serialise_to_disk(int fd, const struct game_save *save)
 	ssize_t serialised_len;
 	serialised_len = serialise_to_buffer(NULL, save);
 
-	if ((buffer = malloc(serialised_len)) == NULL) {
-		eprintf("serialiser: no memory\n");
-		return -1;
-	}
-
+	buffer = xmalloc(serialised_len);
 	if ((serialised_len = serialise_to_buffer(buffer, save)) == -1) {
 		free(buffer);
 		return -1;
@@ -903,10 +896,7 @@ static int parse_bstr_m(char **string, struct parser *p)
 	if (parse_u16(&len, p) == -1)
 		return -1;
 
-	_string = malloc(len + 1u);
-	if (!_string)
-		return -1;
-
+	_string = xmalloc(len + 1u);
 	if (parser_copy(_string, len, p) < 0) {
 		free(_string);
 		return -1;
@@ -981,7 +971,7 @@ static int parse_offset_table(struct parser *p)
 /*
  * Parse a bstring array, prefixed by its length.
  * The length is parsed using parse_count callback function.
- * The array memory is allocated using malloc().
+ * The array memory is allocated using xmalloc().
  */
 static int parse_bstr_array(char ***array, u32 *array_len,
 	int (*parse_count)(u32 *, struct parser *), struct parser *p)
@@ -992,9 +982,7 @@ static int parse_bstr_array(char ***array, u32 *array_len,
 	if (parse_count(&count, p) == -1)
 		return -1;
 
-	bstrings = malloc(count * sizeof(*bstrings));
-	if (!bstrings)
-		return -1;
+	bstrings = xmalloc(count * sizeof(*bstrings));
 
 	for (i = 0u; i < count; ++i) {
 		if (parse_bstr_m(bstrings + i, p) == -1) {
@@ -1042,11 +1030,7 @@ static int parse_misc_stats(struct misc_stats *stats, struct parser *p)
 	if (parse_u32(&count, p) == -1)
 		return -1;
 
-	stats->stats = malloc(count * sizeof(*stats->stats));
-	if (!stats->stats) {
-		eprintf("parser: no memory\n");
-		return -1;
-	}
+	stats->stats = xmalloc(count * sizeof(*stats->stats));
 	stats->count = count;
 
 	for (i = 0u; i < count; ++i) {
@@ -1065,11 +1049,7 @@ static int parse_global_vars(struct global_vars *vars, struct parser *p)
 	if (parse_vsval(&count, p) == -1)
 		return -1;
 
-	vars->vars = malloc(count * sizeof(*vars->vars));
-	if (!vars->vars) {
-		eprintf("parser: no memory\n");
-		return -1;
-	}
+	vars->vars = xmalloc(count * sizeof(*vars->vars));
 	vars->count = count;
 
 	for (i = 0u; i < count; ++i) {
@@ -1120,12 +1100,7 @@ static int parse_weather(struct weather *w, u32 len, struct parser *p)
 		return -1;
 
 	w->data4_sz = len - (p->offset - start);
-	w->data4 = malloc(w->data4_sz);
-	if (!w->data4) {
-		eprintf("parser: no memory\n");
-		return -1;
-	}
-
+	w->data4 = xmalloc(w->data4_sz);
 	parser_copy(w->data4, w->data4_sz, p);
 
 	return p->eod ? -1 : 0;
@@ -1139,26 +1114,16 @@ static int parse_magic_favourites(struct magic_favourites *mf, struct parser *p)
 	mf->hotkeys = NULL;
 
 	if (parse_vsval(&mf->num_favourites, p) == -1)
-		goto out_error;
+		return -1;
 
-	mf->favourites = malloc(sizeof(*mf->favourites) * mf->num_favourites);
-	if (!mf->favourites) {
-		eprintf("parser: no memory\n");
-		goto out_error;
-	}
-
+	mf->favourites = xmalloc(sizeof(*mf->favourites) * mf->num_favourites);
 	for (i = 0u; i < mf->num_favourites; ++i)
 		parse_ref_id(mf->favourites + i, p);
 
 	if (parse_vsval(&mf->num_hotkeys, p) == -1)
 		goto out_error;
 
-	mf->hotkeys = malloc(sizeof(*mf->hotkeys) * mf->num_hotkeys);
-	if (!mf->hotkeys)  {
-		eprintf("parser: no memory\n");
-		goto out_error;
-	}
-
+	mf->hotkeys = xmalloc(sizeof(*mf->hotkeys) * mf->num_hotkeys);
 	for (i = 0u; i < mf->num_hotkeys; ++i)
 		parse_ref_id(mf->hotkeys + i, p);
 
@@ -1171,6 +1136,8 @@ out_error:
 	free(mf->hotkeys);
 	mf->favourites = NULL;
 	mf->hotkeys = NULL;
+	mf->num_favourites = 0;
+	mf->num_hotkeys = 0;
 	return -1;
 }
 
@@ -1268,12 +1235,7 @@ static int parse_change_form(struct change_form *cf, struct parser *p)
 
 	RETURN_EOD_IF_SHORT(cf->length1, p);
 
-	cf->data = malloc(cf->length1);
-	if (!cf->data) {
-		eprintf("parser: no memory\n");
-		return -1;
-	}
-
+	cf->data = xmalloc(cf->length1);
 	parser_copy(cf->data, cf->length1, p);
 	return 0;
 }
@@ -1286,15 +1248,12 @@ static int parse_uint_array(u32 **array, u32 *len, struct parser *p)
 	if (parse_u32(&llen, p) == -1)
 		return -1;
 
-	larray = malloc(llen * sizeof(*larray));
-	if (!larray) {
-		eprintf("parser: no memory\n");
-		return -1;
-	}
-
+	larray = xmalloc(llen * sizeof(*larray));
 	for (i = 0u; i < llen; ++i) {
-		if (parse_u32(larray + i, p) == -1)
+		if (parse_u32(larray + i, p) == -1) {
+			free(larray);
 			return -1;
+		}
 	}
 
 	*len = llen;
@@ -1357,11 +1316,7 @@ static int parse_body(struct game_save *save, struct parser *p)
 
 	CHECK_OFFSET(p->ctx->offsets.off_change_forms, "Change forms", p);
 	next_len = p->ctx->offsets.num_change_form;
-	save->change_forms = malloc(next_len * sizeof(*save->change_forms));
-	if (!save->change_forms) {
-		eprintf("parser: no memory\n");
-		return -1;
-	}
+	save->change_forms = xmalloc(next_len * sizeof(*save->change_forms));
 	for (i = 0u; i < next_len; ++i) {
 		rc = parse_change_form(
 			save->change_forms + save->num_change_forms, p);
@@ -1385,11 +1340,7 @@ static int parse_body(struct game_save *save, struct parser *p)
 	CHECK_OFFSET(p->ctx->offsets.off_unknown_table, "Unknown table", p);
 	if (parse_u32(&save->unknown3_sz, p) == -1)
 		return -1;
-	save->unknown3 = malloc(save->unknown3_sz * sizeof(*save->unknown3));
-	if (!save->unknown3) {
-		eprintf("parser: no memory\n");
-		return -1;
-	}
+	save->unknown3 = xmalloc(save->unknown3_sz * sizeof(*save->unknown3));
 	parser_copy(save->unknown3, save->unknown3_sz, p);
 
 	return p->eod ? -1 : 0;
@@ -1438,10 +1389,7 @@ static int parse_save_data(struct game_save *save, struct parser *p)
 
 	RETURN_EOD_IF_SHORT(com_len, p);
 
-	if ((decompressed = malloc(uncom_len)) == NULL) {
-		eprintf("parser: no memory\n");
-		return -1;
-	}
+	decompressed = xmalloc(uncom_len);
 
 	switch (p->ctx->header.compressor) {
 	case COMPRESS_LZ4:
@@ -1503,19 +1451,12 @@ static int parse_file_from_pipe(int fd, struct game_save *out)
 	int in_length, total_read = 0;
 	size_t buf_sz = 0u;
 	void *buf = NULL;
-	void *temp = NULL;
 	struct file_context ctx = {0};
 	struct parser p;
 
 	while (1) {
 		buf_sz += block;
-		temp = realloc(buf, buf_sz);
-		if (!temp) {
-			free(buf);
-			eprintf("parser: cannot allocate memory\n");
-			return -1;
-		}
-		buf = temp;
+		buf = xrealloc(buf, buf_sz);
 
 		if ((in_length = read(fd, buf + total_read, block)) <= 0)
 			break;
