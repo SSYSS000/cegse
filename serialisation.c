@@ -1300,18 +1300,21 @@ static int parse_body(struct game_save *save, struct parser *p)
 		p->ctx->offsets.num_globals3;
 
 	save->globals = xmalloc(sizeof(*save->globals) * num_globals);
-	save->num_globals = num_globals;
 
 	struct global_data *global = save->globals;
 	CHECK_OFFSET(p->ctx->offsets.off_globals1, "Globals 1", p);
-	for (i = 0u; i < p->ctx->offsets.num_globals1; ++i)
+	for (i = 0u; i < p->ctx->offsets.num_globals1; ++i) {
 		if (parse_global_data(global++, p) == -1)
 			return -1;
+		save->num_globals++;
+	}
 
 	CHECK_OFFSET(p->ctx->offsets.off_globals2, "Globals 2", p);
-	for (i = 0u; i < p->ctx->offsets.num_globals2; ++i)
+	for (i = 0u; i < p->ctx->offsets.num_globals2; ++i) {
 		if (parse_global_data(global++, p) == -1)
 			return -1;
+		save->num_globals++;
+	}
 
 	CHECK_OFFSET(p->ctx->offsets.off_change_forms, "Change forms", p);
 	next_len = p->ctx->offsets.num_change_form;
@@ -1325,9 +1328,11 @@ static int parse_body(struct game_save *save, struct parser *p)
 	}
 
 	CHECK_OFFSET(p->ctx->offsets.off_globals3, "Globals 3", p);
-	for (i = 0u; i < p->ctx->offsets.num_globals3; ++i)
+	for (i = 0u; i < p->ctx->offsets.num_globals3; ++i) {
 		if (parse_global_data(global++, p) == -1)
 			return -1;
+		save->num_globals++;
+	}
 
 	CHECK_OFFSET(p->ctx->offsets.off_form_ids_count, "Form IDs", p);
 	if (parse_uint_array(&save->form_ids, &save->num_form_ids, p) == -1)
