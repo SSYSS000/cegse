@@ -32,6 +32,19 @@ struct game_save* game_save_new(void)
 	return calloc(1, sizeof(struct game_save));
 }
 
+struct global_data *game_save_get_global_data(const struct game_save *save,
+	enum global_data_type type)
+{
+	u32 i;
+
+	for (i = 0u; i < save->num_globals; ++i) {
+		if (save->globals[i].type == type)
+			return save->globals + i;
+	}
+
+	return NULL;
+}
+
 void game_save_free(struct game_save *save)
 {
 	unsigned i;
@@ -47,7 +60,9 @@ void game_save_free(struct game_save *save)
 		free(save->light_plugins[i]);
 	free(save->light_plugins);
 
-	global_data_free(&save->globals);
+	for (i = 0u; i < save->num_globals; ++i)
+		global_data_free(save->globals + i);
+	free(save->globals);
 
 	for (i = 0u; i < save->num_change_forms; ++i)
 		free(save->change_forms[i].data);

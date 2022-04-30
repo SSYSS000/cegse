@@ -63,7 +63,8 @@ struct game_save {
 	u32 num_light_plugins;
 	char **light_plugins;
 
-	struct global_data globals;
+	u32 num_globals;
+	struct global_data *globals;
 
 	u32 num_change_forms;
 	struct change_form *change_forms;
@@ -77,6 +78,9 @@ struct game_save {
 	u32 unknown3_sz;
 	u32 *unknown3;
 };
+
+struct global_data *game_save_get_global_data(const struct game_save *save,
+	enum global_data_type type);
 
 /*
  * Create a game save.

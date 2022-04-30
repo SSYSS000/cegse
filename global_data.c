@@ -21,71 +21,48 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdlib.h>
 #include <stdbool.h>
+#include <assert.h>
 #include "global_data.h"
 
-static inline void free_misc_stats(struct misc_stats *stats)
+bool global_data_structure_is_known(enum global_data_type type)
 {
-	free(stats->stats);
+	switch (type) {
+	case GLOBAL_MISC_STATS:
+	case GLOBAL_PLAYER_LOCATION:
+	case GLOBAL_GLOBAL_VARIABLES:
+	case GLOBAL_WEATHER:
+	case GLOBAL_MAGIC_FAVORITES:
+		return true;
+	default:
+		return false;
+	}
+
+	return false;
 }
 
-static inline void free_global_vars(struct global_vars *vars)
+void global_data_free(struct global_data *g)
 {
-	free(vars->vars);
-}
+	switch (g->type) {
+	case GLOBAL_MISC_STATS:
+		free(g->object.stats.stats);
+		break;
 
-static inline void free_weather(struct weather *w)
-{
-	free(w->data4);
-}
+	case GLOBAL_GLOBAL_VARIABLES:
+		free(g->object.global_vars.vars);
+		break;
 
-static inline void free_magic_favourites(struct magic_favourites *mf)
-{
-	free(mf->favourites);
-	free(mf->hotkeys);
-}
+	case GLOBAL_WEATHER:
+		free(g->object.weather.data4);
+		break;
 
-static inline void free_raw_global(struct raw_global *raw)
-{
-	free(raw->data);
-}
+	case GLOBAL_MAGIC_FAVORITES:
+		free(g->object.magic_favs.favourites);
+		free(g->object.magic_favs.hotkeys);
+		break;
 
-void global_data_free(struct global_data *gdata)
-{
-	free_misc_stats(&gdata->stats);
-	free_raw_global(&gdata->game);
-	free_global_vars(&gdata->global_vars);
-	free_raw_global(&gdata->created_objs);
-	free_raw_global(&gdata->effects);
-	free_weather(&gdata->weather);
-	free_raw_global(&gdata->audio);
-	free_raw_global(&gdata->sky_cells);
-	free_raw_global(&gdata->unknown_9);
-	free_raw_global(&gdata->unknown_10);
-	free_raw_global(&gdata->unknown_11);
-	free_raw_global(&gdata->process_lists);
-	free_raw_global(&gdata->combat);
-	free_raw_global(&gdata->interface);
-	free_raw_global(&gdata->actor_causes);
-	free_raw_global(&gdata->unknown_104);
-	free_raw_global(&gdata->detection_man);
-	free_raw_global(&gdata->location_meta);
-	free_raw_global(&gdata->quest_static);
-	free_raw_global(&gdata->story_teller);
-	free_magic_favourites(&gdata->magic_favs);
-	free_raw_global(&gdata->player_ctrls);
-	free_raw_global(&gdata->story_event_man);
-	free_raw_global(&gdata->ingredient_shared);
-	free_raw_global(&gdata->menu_ctrls);
-	free_raw_global(&gdata->menu_topic_man);
-	free_raw_global(&gdata->unknown_115);
-	free_raw_global(&gdata->unknown_116);
-	free_raw_global(&gdata->unknown_117);
-	free_raw_global(&gdata->temp_effects);
-	free_raw_global(&gdata->papyrus);
-	free_raw_global(&gdata->anim_objs);
-	free_raw_global(&gdata->timer);
-	free_raw_global(&gdata->synced_anims);
-	free_raw_global(&gdata->main);
-	free_raw_global(&gdata->unknown_1006);
-	free_raw_global(&gdata->unknown_1007);
+	default:
+		if (!global_data_structure_is_known(g->type)) {
+			free(g->object.raw.data);
+		}
+	}
 }

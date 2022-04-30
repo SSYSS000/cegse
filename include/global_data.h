@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef CEGSE_GLOBAL_DATA_H
 #define CEGSE_GLOBAL_DATA_H
 
+#include <stdbool.h>
 #include "types.h"
 
 enum global_data_type {
@@ -35,28 +36,28 @@ enum global_data_type {
 	GLOBAL_WEATHER			= 6,
 	GLOBAL_AUDIO			= 7,
 	GLOBAL_SKY_CELLS		= 8,
-	GLOBAL_UNKNOWN_9		= 9,
-	GLOBAL_UNKNOWN_10		= 10,
-	GLOBAL_UNKNOWN_11		= 11,
+	GLOBAL_UNKNOWN_9		= 9,    /* Fallout 4 */
+	GLOBAL_UNKNOWN_10		= 10,   /* Fallout 4 */
+	GLOBAL_UNKNOWN_11		= 11,   /* Fallout 4 */
 	/* Table 2 (100 - 117) */
 	GLOBAL_PROCESS_LISTS		= 100,
 	GLOBAL_COMBAT			= 101,
 	GLOBAL_INTERFACE		= 102,
 	GLOBAL_ACTOR_CAUSES		= 103,
-	GLOBAL_UNKNOWN_104		= 104,
+	GLOBAL_UNKNOWN_104		= 104,  /* Skyrim */
 	GLOBAL_DETECTION_MANAGER	= 105,
 	GLOBAL_LOCATION_METADATA	= 106,
-	GLOBAL_QUEST_STATIC_DATA	= 107,
-	GLOBAL_STORYTELLER		= 108,
+	GLOBAL_QUEST_STATIC_DATA	= 107,  /* Skyrim */
+	GLOBAL_STORYTELLER		= 108,  /* Skyrim */
 	GLOBAL_MAGIC_FAVORITES		= 109,
 	GLOBAL_PLAYER_CONTROLS		= 110,
 	GLOBAL_STORY_EVENT_MANAGER 	= 111,
-	GLOBAL_INGREDIENT_SHARED	= 112,
+	GLOBAL_INGREDIENT_SHARED	= 112,  /* Skyrim */
 	GLOBAL_MENU_CONTROLS		= 113,
 	GLOBAL_MENU_TOPIC_MANAGER	= 114,
-	GLOBAL_UNKNOWN_115		= 115,
-	GLOBAL_UNKNOWN_116		= 116,
-	GLOBAL_UNKNOWN_117		= 117,
+	GLOBAL_UNKNOWN_115		= 115,  /* Fallout 4 */
+	GLOBAL_UNKNOWN_116		= 116,  /* Fallout 4 */
+	GLOBAL_UNKNOWN_117		= 117,  /* Fallout 4 */
 	/* Table 3 (1000 - 1007) */
 	GLOBAL_TEMP_EFFECTS		= 1000,
 	GLOBAL_PAPYRUS			= 1001,
@@ -64,8 +65,8 @@ enum global_data_type {
 	GLOBAL_TIMER			= 1003,
 	GLOBAL_SYNCHRONISED_ANIMS 	= 1004,
 	GLOBAL_MAIN			= 1005,
-	GLOBAL_UNKNOWN_1006		= 1006,
-	GLOBAL_UNKNOWN_1007		= 1007
+	GLOBAL_UNKNOWN_1006		= 1006, /* Fallout 4 */
+	GLOBAL_UNKNOWN_1007		= 1007  /* Fallout 4 */
 };
 
 enum misc_stat_category {
@@ -178,55 +179,24 @@ struct magic_favourites {
 	ref_t *hotkeys;
 };
 
-struct raw_global {
-	u32 data_sz;
-	char *data;
+union global_data_object {
+	struct misc_stats stats;
+	struct player_location player_location;
+	struct global_vars global_vars;
+	struct weather weather;
+	struct magic_favourites magic_favs;
+	struct {
+		u32 size;
+		void *data;
+	} raw;
 };
 
 struct global_data {
-	/* Table 1 (0 - 11) */
-	struct misc_stats stats;
-	struct player_location player_location;
-	struct raw_global game;
-	struct global_vars global_vars;
-	struct raw_global created_objs;
-	struct raw_global effects;
-	struct weather weather;
-	struct raw_global audio;
-	struct raw_global sky_cells;
-	struct raw_global unknown_9;  /* Fallout 4 */
-	struct raw_global unknown_10; /* Fallout 4 */
-	struct raw_global unknown_11; /* Fallout 4 */
-	/* Table 2 (100 - 117) */
-	struct raw_global process_lists;
-	struct raw_global combat;
-	struct raw_global interface;
-	struct raw_global actor_causes;
-	struct raw_global unknown_104;	/* Skyrim */
-	struct raw_global detection_man;
-	struct raw_global location_meta;
-	struct raw_global quest_static; /* Skyrim */
-	struct raw_global story_teller; /* Skyrim */
-	struct magic_favourites magic_favs;
-	struct raw_global player_ctrls;
-	struct raw_global story_event_man;
-	struct raw_global ingredient_shared; /* Skyrim */
-	struct raw_global menu_ctrls;
-	struct raw_global menu_topic_man;
-	struct raw_global unknown_115; /* Fallout 4 */
-	struct raw_global unknown_116; /* Fallout 4 */
-	struct raw_global unknown_117; /* Fallout 4 */
-	/* Table 3 (1000 - 1007) */
-	struct raw_global temp_effects;
-	struct raw_global papyrus;
-	struct raw_global anim_objs;
-	struct raw_global timer;
-	struct raw_global synced_anims;
-	struct raw_global main;
-	struct raw_global unknown_1006; /* Fallout 4 */
-	struct raw_global unknown_1007; /* Fallout 4 */
+	enum global_data_type type;
+	union global_data_object object;
 };
 
+bool global_data_structure_is_known(enum global_data_type type);
 void global_data_free(struct global_data *gdata);
 
 #endif /* CEGSE_GLOBAL_DATA_H */

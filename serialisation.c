@@ -19,6 +19,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
@@ -29,6 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "compression.h"
 #include "snapshot.h"
 #include "defines.h"
+#include "alloc.h"
 
 #ifdef BSD
 #include <sys/endian.h>
@@ -206,20 +208,6 @@ static void init_file_ctx(const struct game_save *save, struct file_context *ctx
 	strcpy(ctx->header.location, save->location);
 	strcpy(ctx->header.game_time, save->game_time);
 	strcpy(ctx->header.race_id, save->race_id);
-
-	switch (save->game) {
-	case SKYRIM:
-		ctx->offsets.num_globals1 = 9;
-		ctx->offsets.num_globals2 = 14;
-		ctx->offsets.num_globals3 = 5;
-		break;
-	case FALLOUT4:
-		ctx->offsets.num_globals1 = 12;
-		ctx->offsets.num_globals2 = 14;
-		ctx->offsets.num_globals3 = 8;
-		break;
-	}
-
 	ctx->offsets.num_change_form = save->num_change_forms;
 
 	if (can_use_compressor(ctx))
@@ -382,7 +370,13 @@ static void serialise_offset_table(struct serialiser *s)
 	serialise_u32(table->off_globals3, s);
 	serialise_u32(table->num_globals1, s);
 	serialise_u32(table->num_globals2, s);
-	serialise_u32(table->num_globals3, s);
+	if (fcontext_game(s->ctx) == SKYRIM && table->num_globals3 > 0) {
+		 /* Skyrim doesn't acknowledge the last global data. */
+		serialise_u32(table->num_globals3 - 1, s);
+	}
+	else {
+		serialise_u32(table->num_globals3, s);
+	}
 	serialise_u32(table->num_change_form, s);
 	serialiser_fill(0, sizeof(u32[15]), s);
 }
@@ -429,11 +423,6 @@ static void serialise_uint_array(const u32 *array, u32 len, struct serialiser *s
 	serialise_u32(len, s);
 	for (i = 0u; i < len; ++i)
 		serialise_u32(array[i], s);
-}
-
-static void serialise_raw_global(const struct raw_global *g, struct serialiser *s)
-{
-	serialiser_copy(g->data, g->data_sz, s);
 }
 
 static void serialise_misc_stats(const struct misc_stats *stats,
@@ -510,198 +499,54 @@ static void serialise_magic_favourites(const struct magic_favourites *mf, struct
 }
 
 static void serialise_global_data(const struct global_data *g,
-	enum global_data_type type, struct serialiser *s)
+	struct serialiser *s)
 {
 	size_t bs;
 
-	serialise_u32(type, s);
+	serialise_u32(g->type, s);
 	bs = start_variable_length_block(s);
 
-	DPRINT("%08x: s global type %u\n", (unsigned)s->offset, type);
+	DPRINT("%08x: s global type %u\n", (unsigned)s->offset, g->type);
 
-	switch (type) {
+	switch (g->type) {
 	case GLOBAL_MISC_STATS:
-		serialise_misc_stats(&g->stats, s);
+		serialise_misc_stats(&g->object.stats, s);
 		break;
 	case GLOBAL_PLAYER_LOCATION:
-		serialise_player_location(&g->player_location, s);
-		break;
-	case GLOBAL_GAME:
-		serialise_raw_global(&g->game, s);
+		serialise_player_location(&g->object.player_location, s);
 		break;
 	case GLOBAL_GLOBAL_VARIABLES:
-		serialise_global_vars(&g->global_vars, s);
-		break;
-	case GLOBAL_CREATED_OBJECTS:
-		serialise_raw_global(&g->created_objs, s);
-		break;
-	case GLOBAL_EFFECTS:
-		serialise_raw_global(&g->effects, s);
+		serialise_global_vars(&g->object.global_vars, s);
 		break;
 	case GLOBAL_WEATHER:
-		serialise_weather(&g->weather, s);
-		break;
-	case GLOBAL_AUDIO:
-		serialise_raw_global(&g->audio, s);
-		break;
-	case GLOBAL_SKY_CELLS:
-		serialise_raw_global(&g->sky_cells, s);
-		break;
-	case GLOBAL_UNKNOWN_9:
-		serialise_raw_global(&g->unknown_9, s);
-		break;
-	case GLOBAL_UNKNOWN_10:
-		serialise_raw_global(&g->unknown_10, s);
-		break;
-	case GLOBAL_UNKNOWN_11:
-		serialise_raw_global(&g->unknown_11, s);
-		break;
-	case GLOBAL_PROCESS_LISTS:
-		serialise_raw_global(&g->process_lists, s);
-		break;
-	case GLOBAL_COMBAT:
-		serialise_raw_global(&g->combat, s);
-		break;
-	case GLOBAL_INTERFACE:
-		serialise_raw_global(&g->interface, s);
-		break;
-	case GLOBAL_ACTOR_CAUSES:
-		serialise_raw_global(&g->actor_causes, s);
-		break;
-	case GLOBAL_UNKNOWN_104:
-		serialise_raw_global(&g->unknown_104, s);
-		break;
-	case GLOBAL_DETECTION_MANAGER:
-		serialise_raw_global(&g->detection_man, s);
-		break;
-	case GLOBAL_LOCATION_METADATA:
-		serialise_raw_global(&g->location_meta, s);
-		break;
-	case GLOBAL_QUEST_STATIC_DATA:
-		serialise_raw_global(&g->quest_static, s);
-		break;
-	case GLOBAL_STORYTELLER:
-		serialise_raw_global(&g->story_teller, s);
+		serialise_weather(&g->object.weather, s);
 		break;
 	case GLOBAL_MAGIC_FAVORITES:
-		serialise_magic_favourites(&g->magic_favs, s);
-		break;
-	case GLOBAL_PLAYER_CONTROLS:
-		serialise_raw_global(&g->player_ctrls, s);
-		break;
-	case GLOBAL_STORY_EVENT_MANAGER:
-		serialise_raw_global(&g->story_event_man, s);
-		break;
-	case GLOBAL_INGREDIENT_SHARED:
-		serialise_raw_global(&g->ingredient_shared, s);
-		break;
-	case GLOBAL_MENU_CONTROLS:
-		serialise_raw_global(&g->menu_ctrls, s);
-		break;
-	case GLOBAL_MENU_TOPIC_MANAGER:
-		serialise_raw_global(&g->menu_topic_man, s);
-		break;
-	case GLOBAL_UNKNOWN_115:
-		serialise_raw_global(&g->unknown_115, s);
-		break;
-	case GLOBAL_UNKNOWN_116:
-		serialise_raw_global(&g->unknown_116, s);
-		break;
-	case GLOBAL_UNKNOWN_117:
-		serialise_raw_global(&g->unknown_117, s);
-		break;
-	case GLOBAL_TEMP_EFFECTS:
-		serialise_raw_global(&g->temp_effects, s);
-		break;
-	case GLOBAL_PAPYRUS:
-		serialise_raw_global(&g->papyrus, s);
-		break;
-	case GLOBAL_ANIM_OBJECTS:
-		serialise_raw_global(&g->anim_objs, s);
-		break;
-	case GLOBAL_TIMER:
-		serialise_raw_global(&g->timer, s);
-		break;
-	case GLOBAL_SYNCHRONISED_ANIMS:
-		serialise_raw_global(&g->synced_anims, s);
-		break;
-	case GLOBAL_MAIN:
-		serialise_raw_global(&g->main, s);
-		break;
-	case GLOBAL_UNKNOWN_1006:
-		serialise_raw_global(&g->unknown_1006, s);
-		break;
-	case GLOBAL_UNKNOWN_1007:
-		serialise_raw_global(&g->unknown_1007, s);
+		serialise_magic_favourites(&g->object.magic_favs, s);
 		break;
 	default:
-		eprintf("serialiser: unexpected global data type (%u)\n", type);
+		assert(!global_data_structure_is_known(g->type));
+		serialiser_copy(g->object.raw.data, g->object.raw.size, s);
 	}
 
 	end_variable_length_block(bs, s);
 }
 
-static void serialise_globals1(const struct global_data *g, struct serialiser *s)
+static int serialise_globals(const struct global_data *globals, int n,
+	enum global_data_type from, enum global_data_type to,
+	struct serialiser *s)
 {
-	serialise_global_data(g, GLOBAL_MISC_STATS, s);
-	serialise_global_data(g, GLOBAL_PLAYER_LOCATION, s);
-	serialise_global_data(g, GLOBAL_GAME, s);
-	serialise_global_data(g, GLOBAL_GLOBAL_VARIABLES, s);
-	serialise_global_data(g, GLOBAL_CREATED_OBJECTS, s);
-	serialise_global_data(g, GLOBAL_EFFECTS, s);
-	serialise_global_data(g, GLOBAL_WEATHER, s);
-	serialise_global_data(g, GLOBAL_AUDIO, s);
-	serialise_global_data(g, GLOBAL_SKY_CELLS, s);
+	int n_serialised = 0;
+	int i;
 
-	if (fcontext_game(s->ctx) == FALLOUT4) {
-		serialise_global_data(g, GLOBAL_UNKNOWN_9, s);
-		serialise_global_data(g, GLOBAL_UNKNOWN_10, s);
-		serialise_global_data(g, GLOBAL_UNKNOWN_11, s);
+	for (i = 0u; i < n; ++i) {
+		if (from <= globals[i].type && globals[i].type <= to) {
+			serialise_global_data(globals + i, s);
+			n_serialised++;
+		}
 	}
-}
 
-static void serialise_globals2(const struct global_data *g, struct serialiser *s)
-{
-	serialise_global_data(g, GLOBAL_PROCESS_LISTS, s);
-	serialise_global_data(g, GLOBAL_COMBAT, s);
-	serialise_global_data(g, GLOBAL_INTERFACE, s);
-	serialise_global_data(g, GLOBAL_ACTOR_CAUSES, s);
-	/*if (fcontext_game(s->ctx) == SKYRIM)
-		serialise_global_data(g, GLOBAL_UNKNOWN_104, s);*/
-	serialise_global_data(g, GLOBAL_DETECTION_MANAGER, s);
-	serialise_global_data(g, GLOBAL_LOCATION_METADATA, s);
-	if (fcontext_game(s->ctx) == SKYRIM) {
-		serialise_global_data(g, GLOBAL_QUEST_STATIC_DATA, s);
-		serialise_global_data(g, GLOBAL_STORYTELLER, s);
-	}
-	serialise_global_data(g, GLOBAL_MAGIC_FAVORITES, s);
-	serialise_global_data(g, GLOBAL_PLAYER_CONTROLS, s);
-	serialise_global_data(g, GLOBAL_STORY_EVENT_MANAGER, s);
-	if (fcontext_game(s->ctx) == SKYRIM)
-		serialise_global_data(g, GLOBAL_INGREDIENT_SHARED, s);
-	serialise_global_data(g, GLOBAL_MENU_CONTROLS, s);
-	serialise_global_data(g, GLOBAL_MENU_TOPIC_MANAGER, s);
-
-	if (fcontext_game(s->ctx) == FALLOUT4) {
-		serialise_global_data(g, GLOBAL_UNKNOWN_115, s);
-		serialise_global_data(g, GLOBAL_UNKNOWN_116, s);
-		serialise_global_data(g, GLOBAL_UNKNOWN_117, s);
-	}
-}
-
-static void serialise_globals3(const struct global_data *g, struct serialiser *s)
-{
-	serialise_global_data(g, GLOBAL_TEMP_EFFECTS, s);
-	serialise_global_data(g, GLOBAL_PAPYRUS, s);
-	serialise_global_data(g, GLOBAL_ANIM_OBJECTS, s);
-	serialise_global_data(g, GLOBAL_TIMER, s);
-	serialise_global_data(g, GLOBAL_SYNCHRONISED_ANIMS, s);
-	serialise_global_data(g, GLOBAL_MAIN, s);
-
-	if (fcontext_game(s->ctx) == FALLOUT4) {
-		serialise_global_data(g, GLOBAL_UNKNOWN_1006, s);
-		serialise_global_data(g, GLOBAL_UNKNOWN_1007, s);
-	}
+	return n_serialised;
 }
 
 static void serialise_change_form(const struct change_form *cf,
@@ -712,6 +557,7 @@ static void serialise_change_form(const struct change_form *cf,
 	serialise_u8(cf->type, s);
 	serialise_u8(cf->version, s);
 
+	/* Two upper bits determine the size of length1 and length2. */
 	switch (cf->type >> 6) {
 	case 0u:
 		serialise_u8(cf->length1, s);
@@ -752,9 +598,11 @@ static int serialise_body(const struct game_save *save, struct serialiser *s)
 	serialise_offset_table(s);
 
 	s->ctx->offsets.off_globals1 = s->offset;
-	serialise_globals1(&save->globals, s);
+	s->ctx->offsets.num_globals1 = serialise_globals(save->globals,
+		save->num_globals, GLOBAL_MISC_STATS, GLOBAL_UNKNOWN_11, s);
 	s->ctx->offsets.off_globals2 = s->offset;
-	serialise_globals2(&save->globals, s);
+	s->ctx->offsets.num_globals2 = serialise_globals(save->globals,
+		save->num_globals, GLOBAL_PROCESS_LISTS, GLOBAL_UNKNOWN_117, s);
 
 	s->ctx->offsets.off_change_forms = s->offset;
 	for (i = 0u; i < save->num_change_forms; ++i) {
@@ -762,7 +610,8 @@ static int serialise_body(const struct game_save *save, struct serialiser *s)
 	}
 
 	s->ctx->offsets.off_globals3 = s->offset;
-	serialise_globals3(&save->globals, s);
+	s->ctx->offsets.num_globals3 = serialise_globals(save->globals,
+		save->num_globals, GLOBAL_TEMP_EFFECTS, GLOBAL_UNKNOWN_1007, s);
 
 	s->ctx->offsets.off_form_ids_count = s->offset;
 	serialise_uint_array(save->form_ids, save->num_form_ids, s);
@@ -1320,16 +1169,9 @@ static int parse_magic_favourites(struct magic_favourites *mf, struct parser *p)
 out_error:
 	free(mf->favourites);
 	free(mf->hotkeys);
+	mf->favourites = NULL;
+	mf->hotkeys = NULL;
 	return -1;
-}
-
-static int parse_raw_global(struct raw_global *raw, u32 len, struct parser *p)
-{
-	raw->data = malloc(len);
-	if (!raw->data)
-		return -1;
-	raw->data_sz = len;
-	return parser_copy(raw->data, len, p);
 }
 
 static int parse_global_data(struct global_data *out, struct parser *p)
@@ -1348,124 +1190,28 @@ static int parse_global_data(struct global_data *out, struct parser *p)
 	RETURN_EOD_IF_SHORT(len, p);
 	start_pos = p->offset;
 	DPRINT("%08x: global type %u\n", (unsigned)p->offset, type);
+	out->type = type;
 	switch (type) {
 	case GLOBAL_MISC_STATS:
-		rc = parse_misc_stats(&out->stats, p);
+		rc = parse_misc_stats(&out->object.stats, p);
 		break;
 	case GLOBAL_PLAYER_LOCATION:
-		rc = parse_player_location(&out->player_location, p);
-		break;
-	case GLOBAL_GAME:
-		rc = parse_raw_global(&out->game, len, p);
+		rc = parse_player_location(&out->object.player_location, p);
 		break;
 	case GLOBAL_GLOBAL_VARIABLES:
-		rc = parse_global_vars(&out->global_vars, p);
-		break;
-	case GLOBAL_CREATED_OBJECTS:
-		rc = parse_raw_global(&out->created_objs, len, p);
-		break;
-	case GLOBAL_EFFECTS:
-		rc = parse_raw_global(&out->effects, len, p);
+		rc = parse_global_vars(&out->object.global_vars, p);
 		break;
 	case GLOBAL_WEATHER:
-		rc = parse_weather(&out->weather, len, p);
-		break;
-	case GLOBAL_AUDIO:
-		rc = parse_raw_global(&out->audio, len, p);
-		break;
-	case GLOBAL_SKY_CELLS:
-		rc = parse_raw_global(&out->sky_cells, len, p);
-		break;
-	case GLOBAL_UNKNOWN_9:
-		rc = parse_raw_global(&out->unknown_9, len, p);
-		break;
-	case GLOBAL_UNKNOWN_10:
-		rc = parse_raw_global(&out->unknown_10, len, p);
-		break;
-	case GLOBAL_UNKNOWN_11:
-		rc = parse_raw_global(&out->unknown_11, len, p);
-		break;
-	case GLOBAL_PROCESS_LISTS:
-		rc = parse_raw_global(&out->process_lists, len, p);
-		break;
-	case GLOBAL_COMBAT:
-		rc = parse_raw_global(&out->combat, len, p);
-		break;
-	case GLOBAL_INTERFACE:
-		rc = parse_raw_global(&out->interface, len, p);
-		break;
-	case GLOBAL_ACTOR_CAUSES:
-		rc = parse_raw_global(&out->actor_causes, len, p);
-		break;
-	case GLOBAL_UNKNOWN_104:
-		rc = parse_raw_global(&out->unknown_104, len, p);
-		break;
-	case GLOBAL_DETECTION_MANAGER:
-		rc = parse_raw_global(&out->detection_man, len, p);
-		break;
-	case GLOBAL_LOCATION_METADATA:
-		rc = parse_raw_global(&out->location_meta, len, p);
-		break;
-	case GLOBAL_QUEST_STATIC_DATA:
-		rc = parse_raw_global(&out->quest_static, len, p);
-		break;
-	case GLOBAL_STORYTELLER:
-		rc = parse_raw_global(&out->story_teller, len, p);
+		rc = parse_weather(&out->object.weather, len, p);
 		break;
 	case GLOBAL_MAGIC_FAVORITES:
-		rc = parse_magic_favourites(&out->magic_favs, p);
-		break;
-	case GLOBAL_PLAYER_CONTROLS:
-		rc = parse_raw_global(&out->player_ctrls, len, p);
-		break;
-	case GLOBAL_STORY_EVENT_MANAGER:
-		rc = parse_raw_global(&out->story_event_man, len, p);
-		break;
-	case GLOBAL_INGREDIENT_SHARED:
-		rc = parse_raw_global(&out->ingredient_shared, len, p);
-		break;
-	case GLOBAL_MENU_CONTROLS:
-		rc = parse_raw_global(&out->menu_ctrls, len, p);
-		break;
-	case GLOBAL_MENU_TOPIC_MANAGER:
-		rc = parse_raw_global(&out->menu_topic_man, len, p);
-		break;
-	case GLOBAL_UNKNOWN_115:
-		rc = parse_raw_global(&out->unknown_115, len, p);
-		break;
-	case GLOBAL_UNKNOWN_116:
-		rc = parse_raw_global(&out->unknown_116, len, p);
-		break;
-	case GLOBAL_UNKNOWN_117:
-		rc = parse_raw_global(&out->unknown_117, len, p);
-		break;
-	case GLOBAL_TEMP_EFFECTS:
-		rc = parse_raw_global(&out->temp_effects, len, p);
-		break;
-	case GLOBAL_PAPYRUS:
-		rc = parse_raw_global(&out->papyrus, len, p);
-		break;
-	case GLOBAL_ANIM_OBJECTS:
-		rc = parse_raw_global(&out->anim_objs, len, p);
-		break;
-	case GLOBAL_TIMER:
-		rc = parse_raw_global(&out->timer, len, p);
-		break;
-	case GLOBAL_SYNCHRONISED_ANIMS:
-		rc = parse_raw_global(&out->synced_anims, len, p);
-		break;
-	case GLOBAL_MAIN:
-		rc = parse_raw_global(&out->main, len, p);
-		break;
-	case GLOBAL_UNKNOWN_1006:
-		rc = parse_raw_global(&out->unknown_1006, len, p);
-		break;
-	case GLOBAL_UNKNOWN_1007:
-		rc = parse_raw_global(&out->unknown_1007, len, p);
+		rc = parse_magic_favourites(&out->object.magic_favs, p);
 		break;
 	default:
-		eprintf("parser: unexpected global data type (%u)\n", type);
-		return -1;
+		assert(!global_data_structure_is_known(type));
+		out->object.raw.data = xmalloc(len);
+		out->object.raw.size = len;
+		rc = parser_copy(out->object.raw.data, len, p);
 	}
 
 	if (rc == -1)
@@ -1496,6 +1242,7 @@ static int parse_change_form(struct change_form *cf, struct parser *p)
 	if (p->eod)
 		return -1;
 
+	/* Two upper bits determine the size of length1 and length2. */
 	switch (cf->type >> 6) {
 	case 0u:
 		parse_u8(&cf->length1, p);
@@ -1590,14 +1337,22 @@ static int parse_body(struct game_save *save, struct parser *p)
 		return -1;
 	print_offset_table(&p->ctx->offsets);
 
+	size_t num_globals = p->ctx->offsets.num_globals1 +
+		p->ctx->offsets.num_globals2 +
+		p->ctx->offsets.num_globals3;
+
+	save->globals = xmalloc(sizeof(*save->globals) * num_globals);
+	save->num_globals = num_globals;
+
+	struct global_data *global = save->globals;
 	CHECK_OFFSET(p->ctx->offsets.off_globals1, "Globals 1", p);
 	for (i = 0u; i < p->ctx->offsets.num_globals1; ++i)
-		if (parse_global_data(&save->globals, p) == -1)
+		if (parse_global_data(global++, p) == -1)
 			return -1;
 
 	CHECK_OFFSET(p->ctx->offsets.off_globals2, "Globals 2", p);
 	for (i = 0u; i < p->ctx->offsets.num_globals2; ++i)
-		if (parse_global_data(&save->globals, p) == -1)
+		if (parse_global_data(global++, p) == -1)
 			return -1;
 
 	CHECK_OFFSET(p->ctx->offsets.off_change_forms, "Change forms", p);
@@ -1617,7 +1372,7 @@ static int parse_body(struct game_save *save, struct parser *p)
 
 	CHECK_OFFSET(p->ctx->offsets.off_globals3, "Globals 3", p);
 	for (i = 0u; i < p->ctx->offsets.num_globals3; ++i)
-		if (parse_global_data(&save->globals, p) == -1)
+		if (parse_global_data(global++, p) == -1)
 			return -1;
 
 	CHECK_OFFSET(p->ctx->offsets.off_form_ids_count, "Form IDs", p);
