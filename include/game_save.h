@@ -76,7 +76,7 @@ struct game_save {
 	u32 *world_spaces;
 
 	u32 unknown3_sz;
-	u32 *unknown3;
+	void *unknown3;
 };
 
 struct global_data *game_save_get_global_data(const struct game_save *save,
