@@ -1005,21 +1005,6 @@ static int parse_ref_id(u32 *ref, struct parser *p)
 	return 0;
 }
 
-static int parse_snapshot(struct snapshot **snapshot, struct parser *p)
-{
-	enum pixel_format px_format;
-	unsigned shot_sz;
-
-	px_format = which_snapshot_format(p->ctx);
-	*snapshot = snapshot_new(px_format,
-		p->ctx->header.snapshot_width, p->ctx->header.snapshot_height);
-	if (!*snapshot)
-		return -1;
-
-	shot_sz = snapshot_size(*snapshot);
-	return parser_copy((*snapshot)->data, shot_sz, p);
-}
-
 static int parse_misc_stats(struct misc_stats *stats, struct parser *p)
 {
 	u32 count, i;
@@ -1374,9 +1359,12 @@ static int parse_save_data(struct game_save *save, struct parser *p)
 	strcpy(save->location, p->ctx->header.location);
 	strcpy(save->game_time, p->ctx->header.game_time);
 	strcpy(save->race_id, p->ctx->header.race_id);
-
-	if (parse_snapshot(&save->snapshot, p) == -1)
+	save->snapshot = snapshot_new(which_snapshot_format(p->ctx),
+		p->ctx->header.snapshot_width, p->ctx->header.snapshot_height);
+	if (!save->snapshot)
 		return -1;
+
+	parser_copy(save->snapshot->data, snapshot_size(save->snapshot), p);
 
 	if (!can_use_compressor(p->ctx))
 		return parse_body(save, p);
