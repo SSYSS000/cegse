@@ -749,6 +749,11 @@ void init_parser(const void *data, size_t data_sz, size_t offset,
 	p->ctx = ctx;
 }
 
+static bool parser_eod(const struct parser *p)
+{
+	return p->eod != 0;
+}
+
 static inline void parser_remove(size_t n, struct parser *p)
 {
 	n = MIN(n, p->buf_sz);
@@ -920,11 +925,11 @@ static int parse_header(struct parser *p)
 	parse_filetime(&header->filetime, p);
 	parse_u32(&header->snapshot_width, p);
 	parse_u32(&header->snapshot_height, p);
-	if (p->eod)
+	if (parser_eod(p))
 		return -1;
 	if (can_use_compressor(p->ctx))
 		parse_u16(&header->compressor, p);
-	return p->eod ? -1 : 0;
+	return parser_eod(p) ? -1 : 0;
 }
 
 static int parse_offset_table(struct parser *p)
@@ -962,7 +967,7 @@ static int parse_offset_table(struct parser *p)
 	/* Skip unused. */
 	parser_remove(sizeof(u32[15]), p);
 
-	return p->eod ? -1 : 0;
+	return parser_eod(p) ? -1 : 0;
 }
 
 /*
@@ -1021,7 +1026,7 @@ static int parse_misc_stats(struct misc_stats *stats, struct parser *p)
 		parse_i32(&stats->stats[i].value, p);
 	}
 
-	return p->eod ? -1 : 0;
+	return parser_eod(p) ? -1 : 0;
 }
 
 static int parse_global_vars(struct global_vars *vars, struct parser *p)
@@ -1039,7 +1044,7 @@ static int parse_global_vars(struct global_vars *vars, struct parser *p)
 		parse_f32(&vars->vars[i].value, p);
 	}
 
-	return p->eod ? -1 : 0;
+	return parser_eod(p) ? -1 : 0;
 }
 
 static int parse_player_location(struct player_location *pl, struct parser *p)
@@ -1054,7 +1059,7 @@ static int parse_player_location(struct player_location *pl, struct parser *p)
 	parse_f32(&pl->pos_z, p);
 	if (fcontext_game(p->ctx) == SKYRIM)
 		parse_u8(&pl->unknown, p);
-	return p->eod ? -1 : 0;
+	return parser_eod(p) ? -1 : 0;
 }
 
 static int parse_weather(struct weather *w, u32 len, struct parser *p)
@@ -1078,14 +1083,14 @@ static int parse_weather(struct weather *w, u32 len, struct parser *p)
 	parse_f32(&w->data2, p);
 	parse_u32(&w->data3, p);
 	parse_u8(&w->flags, p);
-	if (p->eod)
+	if (parser_eod(p))
 		return -1;
 
 	w->data4_sz = len - (p->offset - start);
 	w->data4 = xmalloc(w->data4_sz);
 	parser_copy(w->data4, w->data4_sz, p);
 
-	return p->eod ? -1 : 0;
+	return parser_eod(p) ? -1 : 0;
 }
 
 static int parse_magic_favourites(struct magic_favourites *mf, struct parser *p)
@@ -1109,7 +1114,7 @@ static int parse_magic_favourites(struct magic_favourites *mf, struct parser *p)
 	for (i = 0u; i < mf->num_hotkeys; ++i)
 		parse_ref_id(mf->hotkeys + i, p);
 
-	if (p->eod)
+	if (parser_eod(p))
 		goto out_error;
 
 	return 0;
@@ -1133,7 +1138,7 @@ static int parse_global_data(struct global_data *out, struct parser *p)
 
 	parse_u32(&type, p);
 	parse_u32(&len, p);
-	if (p->eod)
+	if (parser_eod(p))
 		return -1;
 
 	start_pos = p->offset;
@@ -1187,7 +1192,7 @@ static int parse_change_form(struct change_form *cf, struct parser *p)
 	parse_u32(&cf->flags, p);
 	parse_u8(&cf->type, p);
 	parse_u8(&cf->version, p);
-	if (p->eod)
+	if (parser_eod(p))
 		return -1;
 
 	/* Two upper bits determine the size of length1 and length2. */
@@ -1208,7 +1213,7 @@ static int parse_change_form(struct change_form *cf, struct parser *p)
 		eprintf("parser: impossible change form length type\n");
 		return -1;
 	}
-	if (p->eod)
+	if (parser_eod(p))
 		return -1;
 
 	/* Don't remove length information yet. */
@@ -1332,7 +1337,7 @@ static int parse_body(struct game_save *save, struct parser *p)
 	save->unknown3 = xmalloc(save->unknown3_sz * sizeof(*save->unknown3));
 	parser_copy(save->unknown3, save->unknown3_sz, p);
 
-	return p->eod ? -1 : 0;
+	return parser_eod(p) ? -1 : 0;
 }
 
 static int parse_save_data(struct game_save *save, struct parser *p)
@@ -1376,7 +1381,7 @@ static int parse_save_data(struct game_save *save, struct parser *p)
 	int rc;
 	parse_u32(&uncom_len, p);
 	parse_u32(&com_len, p);
-	if (p->eod)
+	if (parser_eod(p))
 		return -1;
 
 	if (p->buf_sz < com_len) {
@@ -1405,7 +1410,7 @@ static int parse_save_data(struct game_save *save, struct parser *p)
 
 	rc = parse_body(save, &body_p);
 	free(decompressed);
-	if (rc == -1 && body_p.eod)
+	if (rc == -1 && parser_eod(&body_p))
 		eprintf("parser: save file too short\n");
 	return rc;
 }
@@ -1469,7 +1474,7 @@ static int parse_file_from_pipe(int fd, struct game_save *out)
 
 	if (parse_save_data(out, &p) == -1) {
 		free(buf);
-		if (p.eod)
+		if (parser_eod(&p))
 			eprintf("parser: %08zx: save file too short\n",
 				p.offset);
 		return -1;
@@ -1497,7 +1502,7 @@ static int parse_file_from_disk(int fd, off_t size, struct game_save *out)
 
 	rc = parse_save_data(out, &p);
 	munmap(contents, size);
-	if (p.eod)
+	if (parser_eod(&p))
 		eprintf("parser: %08zx: save file too short\n", p.offset);
 	return rc;
 }
