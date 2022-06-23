@@ -14,6 +14,8 @@ TEST_OBJS := $(TEST_SRC_FILES:%=$(OBJ_DIR)/%.o)
 
 .PHONY: clean
 
+all: $(TARGET) $(TEST_TARGET)
+
 $(TARGET): $(OBJS)
 	$(CC) -o $(TARGET) $(OBJS) $(CFLAGS) $(LIBS)
 
