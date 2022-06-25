@@ -87,3 +87,79 @@ size_t cedf_read_wstring(char *dest, size_t dest_size,
 
 	return sizeof(string_len) + string_len;
 }
+
+size_t cedf_write_vsval(u32 value, struct cengine_data_file *s)
+{
+	 /*
+	  * type value  | vsval size
+	  * ------------+------------
+	  *     0	    |   1 byte
+	  *     1	    |   2 bytes
+	  *     2	    |   3 bytes
+	  */
+	unsigned type;
+	unsigned i;
+	unsigned char buffer[3];
+
+	DWARN_IF(value > VSVAL_MAX, "%u becomes %u\n",
+	       (unsigned)value, (unsigned)(value % (VSVAL_MAX + 1)));
+
+	value <<= 2u;
+	type = (value >= 0x100u) << (value >= 0x10000u);
+	value |= type;
+
+	for (i = 0u; i <= type; ++i) {
+		buffer[i] = value >> i * 8u;
+	}
+
+	return fwrite(buffer, type + 1, 1u, s->stream) * (type + 1);
+}
+
+size_t cedf_read_vsval(u32 *value, struct cengine_data_file *file)
+{
+	 /*
+	  * type value  | vsval size
+	  * ------------+------------
+	  *     0	    |   1 byte
+	  *     1	    |   2 bytes
+	  *     2	    |   3 bytes
+	  */
+	unsigned i;
+	int byte;
+
+	/* Read 1 to 3 bytes into value. */
+	*value = 0u;
+	for (i = 0u; i <= (*value & 0x3u); ++i) {
+		if ((byte = fgetc(file->stream) == EOF) {
+			return 0;
+		}
+
+		*value |= byte << i * 8u;
+	}
+
+	*value >>= 2;
+	return i;
+}
+
+size_t cedf_write_ref_id(u32 ref_id, struct cengine_data_file *file)
+{
+	u8 bytes[] = {
+		ref_id >> 16,
+		ref_id >> 8,
+		ref_id
+	};
+	return fwrite(bytes, sizeof(bytes), 1u, file->stream) * sizeof(bytes);
+}
+
+size_t cedf_read_ref_id(u32 *ref, struct cengine_data_file *p)
+{
+	u8 bytes[3];
+
+	if (!fread(bytes, sizeof(bytes), 1u, p)) {
+		return 0;
+	}
+
+	*ref = bytes[0] << 16 | bytes[1] << 8 | bytes[2];
+	return sizeof(bytes);
+}
+

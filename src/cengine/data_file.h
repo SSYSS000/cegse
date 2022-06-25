@@ -41,4 +41,16 @@ size_t cedf_write_wstring(const char *str, struct cengine_data_file *file);
 
 size_t cedf_read_wstring(char *dest, size_t dest_size, struct cengine_data_file *file);
 
+/*
+ * Serialise a variable-size value.
+ * NOTE: Values greater than VSVAL_MAX are wrapped.
+ */
+size_t cedf_write_vsval(u32 value, struct cengine_data_file *file);
+
+size_t cedf_read_vsval(u32 *value, struct cengine_data_file *file);
+
+size_t cedf_write_ref_id(u32 ref_id, struct cengine_data_file *file);
+
+size_t cedf_read_ref_id(u32 *ref, struct cengine_data_file *file);
+
 #endif /* CEGSE_CREATION_ENGINE_DATA_FILE_H */
