@@ -25,7 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "../stream.h"
 
 /*
- * Creation Engine Data File.
+ * Creation Engine Data File: BSA, ESM, FOS, ESS, etc.
  */
 struct cengine_data_file {
 	FILE *stream;

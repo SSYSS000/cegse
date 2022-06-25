@@ -33,6 +33,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define stream_read_le_i32(v, p)	stream_read_le_u32((u32 *)(v), p)
 #define stream_read_le_i64(v, p)	stream_read_le_u64((u64 *)(v), p)
 
+/**
+ * @brief Write data of size size in little endian byte order.
+ *
+ * @param data Pointer to data that is exactly size bytes.
+ * @param size Storage size of data.
+ * @param stream Stream to write to.
+ * @return Number of bytes written on success, or 0 on failure or if size is 0.
+ */
 size_t stream_write_le(const void *restrict data, size_t size, FILE *restrict stream);
 
 size_t stream_read_le(void *restrict data, size_t size, FILE *restrict stream);
