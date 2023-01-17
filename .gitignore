@@ -8,4 +8,10 @@ test
 *.o
 
 # IDE project files
-*.kdev4
+*.kdev*
+.cproject
+.project
+.settings
+
+# Other
+tags

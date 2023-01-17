@@ -2,7 +2,7 @@
 CEGSE allows the manipulation and the inspection of Creation Engine
 game save files.
 
-Copyright (C) 2021  SSYSS000
+Copyright (C) 2022  SSYSS000
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -19,24 +19,19 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef CEGSE_COMPRESSION_H
-#define CEGSE_COMPRESSION_H
+#ifndef CEGSE_ALLOC_H
+#define CEGSE_ALLOC_H
 
-/*
- * Return compressed size on success or -1 on failure.
- */
-int lz4_compress(const void *src, void *dest, int src_size, int dest_size);
+#include <stdlib.h>
 
-int zlib_compress(const void *src, void *dest, int src_size, int dest_size);
+#define FREE_AND_NULL(p) do {										\
+	free(p);														\
+	(p) = NULL;														\
+} while(0)
 
-/*
- * Return uncompressed size on success or -1 on failure.
- */
-int lz4_decompress(const void *src, void *dest, int src_size, int dest_size);
+void *memdup(const void *ptr, size_t size);
+void *xmalloc(size_t size);
+void *xcalloc(size_t nmemb, size_t size);
+void *xrealloc(void *ptr, size_t size);
 
-/*
- * Return uncompressed size on success or -1 on failure.
- */
-int zlib_decompress(const void *src, void *dest, int src_size, int dest_size);
-
-#endif /* CEGSE_COMPRESSION_H */
+#endif /* CEGSE_ALLOC_H */

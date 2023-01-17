@@ -24,7 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <zlib.h>
 #include <string.h>
 #include "compression.h"
-#include "defines.h"
+#include "log.h"
 
 int lz4_compress(const void *src, void *dest, int src_size, int dest_size)
 {
@@ -39,6 +39,10 @@ int lz4_compress(const void *src, void *dest, int src_size, int dest_size)
 
 int zlib_compress(const void *src, void *dest, int src_size, int dest_size)
 {
+	(void) src;
+	(void) dest;
+	(void) src_size;
+	(void) dest_size;
 	eprintf("zlib_compress: %s\n", strerror(ENOSYS));
 	return -1;
 }

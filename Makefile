@@ -1,8 +1,8 @@
-CFLAGS  := -Iinclude -Wall -Wextra -g -DDEBUGGING=1 -Wno-address-of-packed-member
+CFLAGS  := -Wall -Wextra -g -Wno-address-of-packed-member
 LIBS    := -llz4 -lz
 OBJ_DIR := build
 
-SRC_FILES := $(wildcard *.c)
+SRC_FILES := $(wildcard *.c src/*.c)
 TARGET    := cegse
 
 TEST_SRC_FILES := $(wildcard tests/*.c)
@@ -13,6 +13,8 @@ OBJS      := $(SRC_FILES:%=$(OBJ_DIR)/%.o)
 TEST_OBJS := $(TEST_SRC_FILES:%=$(OBJ_DIR)/%.o)
 
 .PHONY: clean
+
+all: $(TARGET) $(TEST_TARGET)
 
 $(TARGET): $(OBJS)
 	$(CC) -o $(TARGET) $(OBJS) $(CFLAGS) $(LIBS)

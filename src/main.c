@@ -19,44 +19,35 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include <assert.h>
+#include <stdio.h>
 #include <stdlib.h>
-#include "snapshot.h"
+#include "savefile.h"
+#include "log.h"
 
-static unsigned calculate_size(enum pixel_format format, unsigned w, unsigned h)
+int main(int argc, char **argv)
 {
-	unsigned n_pixels = w * h;
-	switch (format) {
-	case PXFMT_RGB:
-		return 3u * n_pixels;
-	case PXFMT_RGBA:
-		return 4u * n_pixels;
+	struct savegame *save;
+	int rc;
+
+	if (argc < 2) {
+		eprintf("usage: %s path/to/savefile\n", argv[0]);
+		return EXIT_FAILURE;
 	}
 
-	assert(!"snapshot contains unknown/unhandled pixel format.");
-}
+	save = cengine_savefile_read(argv[1]);
+	if (!save) {
+		eprintf("fail\n");
+		return EXIT_FAILURE;
+	}
 
-unsigned snapshot_size(const struct snapshot *shot)
-{
-	return calculate_size(shot->pixel_format, shot->width, shot->height);
-}
+	rc = cengine_savefile_write("written_savefile", save);
+	if (rc == -1) {
+		eprintf("failed to write file\n");
+		savegame_free(save);
+		return EXIT_FAILURE;
+	}
 
-struct snapshot *snapshot_new(enum pixel_format format, unsigned w, unsigned h)
-{
-	struct snapshot *shot;
-	unsigned shot_sz;
+	savegame_free(save);
 
-	shot_sz = calculate_size(format, w, h);
-	shot = malloc(sizeof(*shot) + shot_sz);
-	if (!shot)
-		return NULL;
-	shot->pixel_format = format;
-	shot->width = w;
-	shot->height = h;
-	return shot;
-}
-
-void snapshot_free(struct snapshot *shot)
-{
-	free(shot);
+	return EXIT_SUCCESS;
 }

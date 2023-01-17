@@ -18,12 +18,13 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
+#ifndef CEGSE_CENGINE_SAVEFILE_H
+#define CEGSE_CENGINE_SAVEFILE_H
 
-#ifndef CEGSE_ALLOC_H
-#define CEGSE_ALLOC_H
+#include "savegame.h"
 
-void *xmalloc(size_t size);
-void *xcalloc(size_t nmemb, size_t size);
-void *xrealloc(void *ptr, size_t size);
+int cengine_savefile_write(const char *filename, const struct savegame *savegame);
 
-#endif /* CEGSE_ALLOC_H */
+struct savegame *cengine_savefile_read(const char *filename);
+
+#endif /* CEGSE_CENGINE_SAVEFILE_H */

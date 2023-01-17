@@ -19,11 +19,24 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#ifndef CEGSE_DEFINES_H
+#define CEGSE_DEFINES_H
+
 #include <stdio.h>
-#include <stdlib.h>
+#include <signal.h>
 
-int main(int argc, char **argv)
-{
+#define ARRAY_LEN(a) 	(sizeof((a)) / sizeof(*(a)))
 
-	return EXIT_SUCCESS;
-}
+#define MIN(a, b)	    ((a) < (b) ? (a) : (b))
+#define MAX(a, b)       ((a) > (b) ? (a) : (b))
+
+#if !defined(NDEBUG)
+
+/* Break debugger. */
+# define DEBUG_BREAK() raise(SIGTRAP)
+
+#else
+# define DEBUG_BREAK()
+#endif /* !defined(NDEBUG) */
+
+#endif /* CEGSE_DEFINES_H */

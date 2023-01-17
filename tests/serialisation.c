@@ -19,15 +19,15 @@ static void reset(void)
 static int sd_numbers(void)
 {
 	struct numbers {
-		u32 _u8;
-		u32 _u16;
-		u32 _u32;
+		uint32_t _u8;
+		uint32_t _u16;
+		uint32_t _u32;
 		u64 _u64;
 		i8 _i8;
-		i32 _i16;
-		i32 _i32;
+		int32_t _i16;
+		int32_t _i32;
 		i64 _i64;
-		f32 _f32;
+		float _f32;
 	} __attribute__((packed)) /* important, because memcmp is used */
 	result, original = {
 		134u,
@@ -72,13 +72,13 @@ static int sd_numbers(void)
 		"zero value means something's broke:\n"
 		" u8: %d\n"
 		"u16: %d\n"
-		"u32: %d\n"
+		"uint32_t: %d\n"
 		"u64: %d\n"
 		" i8: %d\n"
 		"i16: %d\n"
-		"i32: %d\n"
+		"int32_t: %d\n"
 		"i64: %d\n"
-		"f32: %d\n",
+		"float: %d\n",
 		original._u8 == result._u8,
 		original._u16 == result._u16,
 		original._u32 == result._u32,
@@ -98,7 +98,7 @@ REGISTER_TEST(sd_numbers);
 /* Serialise and deserialise some vsvals of different sizes. */
 static int sd_vsval(void)
 {
-	u32 i, expected, result;
+	uint32_t i, expected, result;
 
 	reset();
 	for (i = 0u; i < 8u; ++i) {
@@ -126,7 +126,7 @@ REGISTER_TEST(sd_vsval);
 /* Serialise and deserialise a reference id. */
 static int sd_ref_id(void)
 {
-	u32 result, expected = REF_REGULAR(0x000BA0CB);
+	uint32_t result, expected = REF_REGULAR(0x000BA0CB);
 
 	reset();
 	serialise_ref_id(expected, &ts);

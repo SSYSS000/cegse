@@ -2,7 +2,7 @@
 CEGSE allows the manipulation and the inspection of Creation Engine
 game save files.
 
-Copyright (C) 2021  SSYSS000
+Copyright (C) 2022  SSYSS000
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -19,35 +19,49 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef CEGSE_SERIALISATION_H
-#define CEGSE_SERIALISATION_H
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include "alloc.h"
 
-#include "game_save.h"
-#include "types.h"
+static void die(const char *msg)
+{
+	write(STDERR_FILENO, msg, strlen(msg));
+	abort();
+}
 
-struct header {
-	enum game game;
-	/* Creation Engine version */
-	u32 	engine;
-	u32 	save_num;
-	char 	ply_name[PLAYER_NAME_MAX_LEN + 1];
-	u32 	level;
-	char 	location[64];
-	/* Playtime or in-game date */
-	char 	game_time[48];
-	char 	race_id[48];
-	u32 	sex;
-	f32 	current_xp;
-	f32 	target_xp;
-	FILETIME filetime;
-	u32 	snapshot_width;
-	u32 	snapshot_height;
-	u32 	compressor;
-};
+void *memdup(const void *ptr, size_t size)
+{
+	void *data = malloc(size);
+	if (data) {
+		memcpy(data, ptr, size);
+	}
+	return data;
+}
 
-int serialise_to_disk(int fd, const struct game_save *save);
+void *xmalloc(size_t size)
+{
+	void *mem = malloc(size);
+	if (!mem) {
+		die("Out of memory\n");
+	}
+	return mem;
+}
 
-int parse_file_header_only(int fd, struct header *header);
-int parse_file(int fd, struct game_save *out);
+void *xcalloc(size_t nmemb, size_t size)
+{
+	void *mem = calloc(nmemb, size);
+	if (!mem) {
+		die("Out of memory\n");
+	}
+	return mem;
+}
 
-#endif /* CEGSE_SERIALISATION_H */
+void *xrealloc(void *ptr, size_t size)
+{
+	void *mem = realloc(ptr, size);
+	if (!mem) {
+		die("Out of memory\n");
+	}
+	return mem;
+}

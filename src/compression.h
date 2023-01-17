@@ -19,36 +19,27 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef CEGSE_SNAPSHOT_H
-#define CEGSE_SNAPSHOT_H
+#ifndef CEGSE_COMPRESSION_H
+#define CEGSE_COMPRESSION_H
 
-enum pixel_format { PXFMT_RGB, PXFMT_RGBA };
-
-struct snapshot {
-	int width;
-	int height;
-	enum pixel_format pixel_format;
-	unsigned char data[];
-};
+typedef int (*compress_fn_t)(const void *, void *, int, int);
+typedef int (*decompress_fn_t)(const void *, void *, int, int);
 
 /*
- * Calculate the size of the snapshot pixels in bytes
- * and return it.
+ * Return compressed size on success or -1 on failure.
  */
-unsigned snapshot_size(const struct snapshot *shot);
+int lz4_compress(const void *src, void *dest, int src_size, int dest_size);
+
+int zlib_compress(const void *src, void *dest, int src_size, int dest_size);
 
 /*
- * Create a blank snapshot of width w and of height h.
- *
- * On memory allocation error, return NULL. Otherwise, return a pointer
- * to the snapshot.
+ * Return uncompressed size on success or -1 on failure.
  */
-struct snapshot *snapshot_new(enum pixel_format format, unsigned w, unsigned h);
+int lz4_decompress(const void *src, void *dest, int src_size, int dest_size);
 
 /*
- * Destroy a snapshot, freeing its held resources. No further actions
- * should be performed on a destroyed snapshot.
+ * Return uncompressed size on success or -1 on failure.
  */
-void snapshot_free(struct snapshot *shot);
+int zlib_decompress(const void *src, void *dest, int src_size, int dest_size);
 
-#endif /* CEGSE_SNAPSHOT_H */
+#endif /* CEGSE_COMPRESSION_H */
