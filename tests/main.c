@@ -20,7 +20,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include <stdio.h>
-#include "defines.h"
 #include "tests.h"
 
 extern struct test_function_info __start_tests;
@@ -33,22 +32,22 @@ int main()
 	int result;
 
 	for (i = &__start_tests; i != &__stop_tests; ++i) {
-		eprintf("%s: %s ...\n", i->file, i->name);
+		fprintf(stderr, "%s: %s ...\n", i->file, i->name);
 
 		result = i->test();
 
 		if (result != TEST_SUCCESS) {
 			num_failed++;
-			eprintf("%s: %s failed.\n", i->file, i->name);
+			fprintf(stderr, "%s: %s failed.\n", i->file, i->name);
 		}
 	}
 
-	eprintf("\n");
+	fprintf(stderr, "\n");
 
 	if (num_failed == 0)
-		eprintf("All tests succeeded!\n");
+		fprintf(stderr, "All tests succeeded!\n");
 	else
-		eprintf("%d tests failed.\n", num_failed);
+		fprintf(stderr, "%d tests failed.\n", num_failed);
 
 	return 0;
 }

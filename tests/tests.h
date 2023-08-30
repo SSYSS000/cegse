@@ -25,11 +25,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define TEST_SUCCESS 0
 #define TEST_FAILURE 1
 
-#include "defines.h"
-
-#define ptest_error(...) do {							\
-	eprintf("%s: ", __func__);						\
-	eprintf(__VA_ARGS__);							\
+#define ptest_error(...) do {							    \
+	fprintf(stderr, "%s: ", __func__);						\
+	fprintf(stderr, __VA_ARGS__);							\
 } while (0)
 
 struct test_function_info {
