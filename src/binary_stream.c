@@ -29,7 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "alloc.h"
 #include "binary_stream.h"
 #include "defines.h"
-#include "endian.h"
+#include "endianness.h"
 #include "log.h"
 
 int put_u8(FILE *stream, uint8_t value)

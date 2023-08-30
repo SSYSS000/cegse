@@ -20,7 +20,7 @@ add_executable(${PROJECT_NAME}
     src/log.h
     src/compression.h
     src/binary_stream.h
-    src/endian.h
+    src/endianness.h
     src/binary_stream.c
     src/main.c
     src/savefile.h

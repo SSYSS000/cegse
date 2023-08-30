@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include "../src/savefile.h"
+#include "savefile.h"
 
 #define SAMPLE_FILENAME             "../../samples/skyrim_special_edition.ess"
 #define REWRITTEN_SAMPLE_FILENAME   "rewritten_sample"

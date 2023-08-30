@@ -29,7 +29,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "binary_stream.h"
 #include "compression.h"
 #include "defines.h"
-#include "endian.h"
 #include "savefile.h"
 #include "savegame.h"
 #include "log.h"

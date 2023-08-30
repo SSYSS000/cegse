@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 2.8...3.5)
 
+include_directories(../src)
+
 add_library(test_modules SHARED
     ../src/compression.c
     ../src/binary_stream.c
