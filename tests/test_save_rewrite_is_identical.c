@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include "savefile.h"
 
+#define DIFF_PROGRAM                "diff"
 #define SAMPLE_FILENAME             "../../samples/skyrim_special_edition.ess"
 #define REWRITTEN_SAMPLE_FILENAME   "rewritten_sample"
 
@@ -19,7 +20,8 @@ int main()
         return EXIT_FAILURE;
     }
 
-    execl("/usr/bin/diff", "-q", SAMPLE_FILENAME, REWRITTEN_SAMPLE_FILENAME, NULL);
-    perror("execl");
+    /* Check if the files are identical with diff. */
+    execlp(DIFF_PROGRAM, DIFF_PROGRAM, "-q", SAMPLE_FILENAME, REWRITTEN_SAMPLE_FILENAME, NULL);
+    perror("execlp");
     return EXIT_FAILURE;
 }
