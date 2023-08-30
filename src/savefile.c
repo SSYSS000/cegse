@@ -1264,6 +1264,7 @@ struct savegame *cengine_savefile_read(const char *filename)
 
     stream = fopen(filename, "rb");
     if (!stream) {
+        perror("fopen");
         free(save);
         return NULL;
     }
@@ -1908,6 +1909,11 @@ int cengine_savefile_write(const char *filename, const struct savegame *savegame
     }
 
     err = serialise_file(stream, savegame);
+
+    if (fclose(stream) == EOF) {
+        perror("fclose");
+        return -1;
+    }
 
     return err == CG_OK ? 0 : -1;
 }
