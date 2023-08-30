@@ -22,5 +22,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef CEGSE_TEST_H
 #define CEGSE_TEST_H
 
+#undef NDEBUG
+#include <assert.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+
+#define ASSERT assert
+
+#ifndef eprintf
+#define eprintf(fmt, ...) fprintf(stderr, fmt, ##__VA_ARGS__)
+#endif
 
 #endif /* CEGSE_TEST_H */

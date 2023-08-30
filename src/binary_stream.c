@@ -34,7 +34,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 int put_u8(FILE *stream, uint8_t value)
 {
-    return fputc(value, stream) == EOF ? EOF : 0;
+    return fputc(value, stream) == EOF ? EOF : 1;
 }
 
 int get_u8(FILE *restrict stream, uint8_t *restrict out)
@@ -67,6 +67,7 @@ int put_be24(FILE *stream, uint32_t value)
 
 uint32_t get_beu24_or_zero(FILE *stream)
 {
+    /* FIXME: some calls may succeed while others fail. */
     return (uint32_t) get_u8_or_zero(stream) << 16 |
         (uint32_t) get_u8_or_zero(stream) << 8 |
         (uint32_t) get_u8_or_zero(stream);
