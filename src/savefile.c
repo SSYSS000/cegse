@@ -571,15 +571,15 @@ static cg_err_t read_global_data_table(FILE *stream, struct savegame *save, unsi
             break;
 
         case 1: /* Player location */
-            save->player_location_name.next_object_id = get_leu32_or_zero(stream);
-            save->player_location_name.world_space1   = get_ref_id(stream);
-            save->player_location_name.coord_x        = get_lei32_or_zero(stream);
-            save->player_location_name.coord_y        = get_lei32_or_zero(stream);
-            save->player_location_name.world_space2   = get_ref_id(stream);
-            save->player_location_name.pos_x          = get_le32_ieee754_or_zero(stream);
-            save->player_location_name.pos_y          = get_le32_ieee754_or_zero(stream);
-            save->player_location_name.pos_z          = get_le32_ieee754_or_zero(stream);
-            save->player_location_name.unknown        = get_u8_or_zero(stream); /* Skyrim only */
+            save->player_location.next_object_id = get_leu32_or_zero(stream);
+            save->player_location.world_space1   = get_ref_id(stream);
+            save->player_location.coord_x        = get_lei32_or_zero(stream);
+            save->player_location.coord_y        = get_lei32_or_zero(stream);
+            save->player_location.world_space2   = get_ref_id(stream);
+            save->player_location.pos_x          = get_le32_ieee754_or_zero(stream);
+            save->player_location.pos_y          = get_le32_ieee754_or_zero(stream);
+            save->player_location.pos_z          = get_le32_ieee754_or_zero(stream);
+            save->player_location.unknown        = get_u8_or_zero(stream); /* Skyrim only */
             break;
 
         case 2:
@@ -1374,15 +1374,15 @@ static int write_global_data_table1(FILE *restrict stream, const struct savegame
      */
     put_le32(stream, 1);
     BEGIN_VARIABLE_LENGTH_BLOCK(stream)
-    put_le32(stream, save->player_location_name.next_object_id);
-    put_ref_id(stream, save->player_location_name.world_space1);
-    put_le32(stream, save->player_location_name.coord_x);
-    put_le32(stream, save->player_location_name.coord_y);
-    put_ref_id(stream, save->player_location_name.world_space2);
-    put_le32_ieee754(stream, save->player_location_name.pos_x);
-    put_le32_ieee754(stream, save->player_location_name.pos_y);
-    put_le32_ieee754(stream, save->player_location_name.pos_z);
-    put_u8(stream, save->player_location_name.unknown); /* Present in Skyrim savefiles. */
+    put_le32(stream, save->player_location.next_object_id);
+    put_ref_id(stream, save->player_location.world_space1);
+    put_le32(stream, save->player_location.coord_x);
+    put_le32(stream, save->player_location.coord_y);
+    put_ref_id(stream, save->player_location.world_space2);
+    put_le32_ieee754(stream, save->player_location.pos_x);
+    put_le32_ieee754(stream, save->player_location.pos_y);
+    put_le32_ieee754(stream, save->player_location.pos_z);
+    put_u8(stream, save->player_location.unknown); /* Present in Skyrim savefiles. */
     END_VARIABLE_LENGTH_BLOCK(stream)
     num_objects++;
 
