@@ -30,7 +30,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "compression.h"
 #include "defines.h"
 #include "savefile.h"
-#include "savegame.h"
 #include "log.h"
 
 #define perror(str) eprintf("%s:%d: %s: %s\n", __FILE__, __LINE__, str, strerror(errno))
@@ -2032,7 +2031,7 @@ static void *mmap_entire_file_r(const char *filename, size_t *pfsize)
 }
 #endif
 
-void free_savefile_private(struct savegame_private *private)
+static void free_savefile_private(struct savegame_private *private)
 {
     free(private->global2);
     free(private->global4);
@@ -2070,4 +2069,49 @@ void free_savefile_private(struct savegame_private *private)
 
     free(private->unknown3);
     free(private);
+}
+
+void savegame_free(struct savegame *save)
+{
+	unsigned i;
+
+	free(save->player_name);
+	free(save->player_location_name);
+	free(save->game_time);
+	free(save->race_id);
+	free(save->snapshot_data);
+	free(save->game_version);
+
+	if (save->plugins) {
+		for (i = 0u; i < save->num_plugins; ++i) {
+			free(save->plugins[i]);
+		}
+
+		free(save->plugins);
+	}
+
+	if (save->light_plugins) {
+		for (i = 0u; i < save->num_light_plugins; ++i) {
+			free(save->light_plugins[i]);
+		}
+
+		free(save->light_plugins);
+	}
+
+	if (save->misc_stats) {
+		for (i = 0; i < save->num_misc_stats; ++i) {
+			free(save->misc_stats[i].name);
+		}
+
+		free(save->misc_stats);
+	}
+
+	free(save->global_vars);
+	free(save->weather.data4);
+	free(save->favourites);
+	free(save->hotkeys);
+	free(save->form_ids);
+	free(save->world_spaces);
+	free_savefile_private(save->_private);
+	free(save);
 }

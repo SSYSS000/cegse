@@ -6,8 +6,7 @@ add_library(test_modules SHARED
     ../src/compression.c
     ../src/binary_stream.c
     ../src/savefile.c
-    ../src/log.c
-    ../src/savegame.c)
+    ../src/log.c)
 
 target_link_libraries(test_modules lz4 z)
 

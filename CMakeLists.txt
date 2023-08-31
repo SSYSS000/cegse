@@ -25,9 +25,7 @@ add_executable(${PROJECT_NAME}
     src/binary_stream.c
     src/main.c
     src/savefile.h
-    src/savegame.h
     src/savefile.c
-    src/savegame.c
 )
 
 target_link_libraries(${PROJECT_NAME} lz4 z)
