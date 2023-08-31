@@ -25,18 +25,20 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdio.h>
 #include <signal.h>
 
-#define ARRAY_LEN(a) 	(sizeof((a)) / sizeof(*(a)))
+#define ARRAY_LEN(a)        (sizeof((a)) / sizeof(*(a)))
 
-#define MIN(a, b)	    ((a) < (b) ? (a) : (b))
-#define MAX(a, b)       ((a) > (b) ? (a) : (b))
+#define MIN(a, b)           ((a) < (b) ? (a) : (b))
+#define MAX(a, b)           ((a) > (b) ? (a) : (b))
+
+/* Like printf but prints to stderr. */
+#define eprintf(...)        fprintf(stderr, __VA_ARGS__)
 
 #if !defined(NDEBUG)
-
-/* Break debugger. */
-# define DEBUG_BREAK() raise(SIGTRAP)
-
+# define BUG(message) do {                                                          \
+                                                                                    \
+} while (0)
 #else
-# define DEBUG_BREAK()
+# define BUG(...) (void) 0
 #endif /* !defined(NDEBUG) */
 
 #endif /* CEGSE_DEFINES_H */

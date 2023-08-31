@@ -22,12 +22,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdio.h>
 #include <stdlib.h>
 #include "savefile.h"
+#include "defines.h"
 #include "log.h"
 
 int main(int argc, char **argv)
 {
 	struct savegame *save;
 	int rc;
+
+	logging();
 
 	if (argc < 2) {
 		eprintf("usage: %s path/to/savefile\n", argv[0]);

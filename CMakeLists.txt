@@ -18,6 +18,7 @@ add_executable(${PROJECT_NAME}
     src/compression.c
     src/defines.h
     src/log.h
+    src/log.c
     src/compression.h
     src/binary_stream.h
     src/endianness.h

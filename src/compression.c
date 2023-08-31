@@ -24,7 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <zlib.h>
 #include <string.h>
 #include "compression.h"
-#include "log.h"
+#include "defines.h"
 
 int lz4_compress(const void *src, void *dest, int src_size, int dest_size)
 {

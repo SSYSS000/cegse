@@ -24,19 +24,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdio.h>
 
-#include "defines.h"
+extern FILE *debug_log_file;
 
-#define eprintf(...) 	fprintf(stderr, __VA_ARGS__)
+void logging(void);
 
 #if !defined(NDEBUG)
-
-# define DEBUG_LOG(...) do {                                    \
-	eprintf("debug: %s: ", __func__);                           \
-	eprintf(__VA_ARGS__);                                       \
-} while (0)
-
+# define DEBUG_LOG(fmt, ...) 		fprintf(debug_log_file, fmt, ##__VA_ARGS__)
 #else
-# define DEBUG_LOG(...)
+# define DEBUG_LOG(...)				(void)0
 #endif /* !defined(NDEBUG) */
 
 #endif /* CEGSE_LOG_H */

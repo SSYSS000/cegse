@@ -233,6 +233,11 @@ struct change_form {
 };
 
 struct savegame_private {
+    /*
+     * Skyrim LE: 9
+     * Skyrim SE: 12
+     * Fallout 4: 11?, 15
+     */
     uint32_t file_version;
     uint8_t  form_version;
 
@@ -294,12 +299,15 @@ enum compressor {
 
 static void print_locations_table(const struct location_table *t)
 {
-    eprintf("%08x: Globals 1 (%u)\n", t->off_globals1, t->num_globals1);
-    eprintf("%08x: Globals 2 (%u)\n", t->off_globals2, t->num_globals2);
-    eprintf("%08x: Change forms (%u)\n", t->off_change_forms, t->num_change_forms);
-    eprintf("%08x: Globals 3 (%u)\n", t->off_globals3, t->num_globals3);
-    eprintf("%08x: Form IDs\n", t->off_form_ids_count);
-    eprintf("%08x: Unknown table\n", t->off_unknown_table);
+    DEBUG_LOG("Location table\n=============================\n");
+    DEBUG_LOG("File offset   Object\n");
+    DEBUG_LOG("0x%08x:   Globals 1 (%u)\n", t->off_globals1, t->num_globals1);
+    DEBUG_LOG("0x%08x:   Globals 2 (%u)\n", t->off_globals2, t->num_globals2);
+    DEBUG_LOG("0x%08x:   Change forms (%u)\n", t->off_change_forms, t->num_change_forms);
+    DEBUG_LOG("0x%08x:   Globals 3 (%u)\n", t->off_globals3, t->num_globals3);
+    DEBUG_LOG("0x%08x:   Form IDs\n", t->off_form_ids_count);
+    DEBUG_LOG("0x%08x:   Unknown table\n", t->off_unknown_table);
+    DEBUG_LOG("=============================\n");
 }
 
 static bool is_skyrim_se(const struct savegame *save)
@@ -539,7 +547,7 @@ static cg_err_t read_global_data_table(FILE *stream, struct savegame *save, unsi
             return CG_FTELL;
         }
 
-        DEBUG_LOG("reading global data type %u at 0x%08lx\n", type, ftell(stream));
+        DEBUG_LOG("0x%08lx: Global data, type=%u length=%u\n", ftell(stream), type, length);
 
         switch(type) {
         case 0: /* Miscellaneous statistics */
@@ -578,7 +586,9 @@ static cg_err_t read_global_data_table(FILE *stream, struct savegame *save, unsi
             save->player_location.pos_x          = get_le32_ieee754_or_zero(stream);
             save->player_location.pos_y          = get_le32_ieee754_or_zero(stream);
             save->player_location.pos_z          = get_le32_ieee754_or_zero(stream);
-            save->player_location.unknown        = get_u8_or_zero(stream); /* Skyrim only */
+            if (save->game == SKYRIM) {
+                save->player_location.unknown    = get_u8_or_zero(stream); /* Skyrim only */
+            }
             break;
 
         case 2:
@@ -819,6 +829,7 @@ static cg_err_t read_change_form(FILE *restrict stream, struct change_form *rest
         return CG_EOF;
     }
 
+
     /* Two upper bits of type determine the sizes of length1 and length2. */
     switch ((cf->type >> 6) & 0x3) {
     case 0:
@@ -834,18 +845,26 @@ static cg_err_t read_change_form(FILE *restrict stream, struct change_form *rest
         cf->length2 = get_leu32_or_zero(stream);
         break;
     default:
-        eprintf("impossible change form length type detected\n");
         /* 
          * The savefile may be corrupt, but more likely there's a bug that
          * led us here.
          */
-        DEBUG_BREAK();
+        BUG("change form type length bits: 11");
         return CG_CORRUPT;
     }
 
     if (feof(stream) || ferror(stream)) {
         return CG_EOF;
     }
+
+    DEBUG_LOG("0x%08lx: Change form, formid=%u flags=0x%x type=%u version=%u length1=%u length2=%u\n",
+              ftell(stream),
+              cf->form_id,
+              cf->flags,
+              cf->type & 0x3fu,
+              cf->version,
+              cf->length1,
+              cf->length2);
 
     /* TODO: Support for change forms */
     /* cf->type &= 0x3fu; */
@@ -869,20 +888,21 @@ static cg_err_t read_save_data(FILE *stream, struct savegame *save)
     uint32_t block_size;
     cg_err_t err;
 
-    DEBUG_LOG("save data begins at 0x%08lx\n", ftell(stream));
+    DEBUG_LOG("0x%08lx: Save data begins\n", ftell(stream));
 
     if (!get_u8(stream, &save->_private->form_version)) {
         return CG_EOF;
     }
 
-#if 0
-    if (game == FALLOUT4) {
+    DEBUG_LOG("Save data form version: %u\n", save->_private->form_version);
+
+    if (save->game == FALLOUT4) {
         err = get_le16_str(stream, &save->game_version);
+
         if (err) {
             return err;
         }
     }
-#endif
 
     /*
      * Read plugin information.
@@ -898,6 +918,8 @@ static cg_err_t read_save_data(FILE *stream, struct savegame *save)
         return CG_EOF;
     }
 
+    DEBUG_LOG("0x%08lx: Reading %u plugins\n", ftell(stream), save->num_plugins);
+
     err = read_le16_str_array(stream, &save->plugins, save->num_plugins);
     if (err) {
         return err;
@@ -911,17 +933,19 @@ static cg_err_t read_save_data(FILE *stream, struct savegame *save)
             return CG_EOF;
         }
 
+        DEBUG_LOG("0x%08lx: Reading %u light plugins\n", ftell(stream), save->num_light_plugins);
+
         err = read_le16_str_array(stream, &save->light_plugins, save->num_light_plugins);
         if (err) {
             return err;
         }
     }
 
-    DEBUG_LOG("%08lx: Locations table\n", ftell(stream));
-
     /*
      * Read the offsets and the sizes of savefile objects.
      */
+    DEBUG_LOG("0x%08lx: Reading locations table\n", ftell(stream));
+
     loc.off_form_ids_count = get_leu32_or_zero(stream);
     loc.off_unknown_table  = get_leu32_or_zero(stream);
     loc.off_globals1       = get_leu32_or_zero(stream);
@@ -932,24 +956,34 @@ static cg_err_t read_save_data(FILE *stream, struct savegame *save)
     loc.num_globals2       = get_leu32_or_zero(stream);
     loc.num_globals3       = get_leu32_or_zero(stream);
     loc.num_change_forms   = get_leu32_or_zero(stream);
+
     save->_private->num_change_forms = loc.num_change_forms;
+
     /* Skip junk. */
     if (fseek(stream, 60, SEEK_CUR) == -1) {
         perror("fseek");
         return CG_FSEEK;
     }
 
+    print_locations_table(&loc);
+
     /* Globals 3 table count is bugged and short by 1. */
     loc.num_globals3 += 1;
-
-#ifndef NDEBUG
-    print_locations_table(&loc);
-#endif
 
     /*
      * Read global data tables 1 and 2.
      */
-    err = read_global_data_table(stream, save, loc.num_globals1 + loc.num_globals2);
+    DEBUG_LOG("0x%08lx: Reading global data table 1\n", ftell(stream));
+
+    err = read_global_data_table(stream, save, loc.num_globals1);
+
+    if (err) {
+        return err;
+    }
+
+    DEBUG_LOG("0x%08lx: Reading global data table 2\n", ftell(stream));
+
+    err = read_global_data_table(stream, save, loc.num_globals2);
 
     if (err) {
         return err;
@@ -964,8 +998,9 @@ static cg_err_t read_save_data(FILE *stream, struct savegame *save)
         return CG_NO_MEM;
     }
 
+    DEBUG_LOG("0x%08lx: Reading %u change forms\n", ftell(stream), loc.num_change_forms);
+
     for (unsigned i = 0; i < loc.num_change_forms; ++i) {
-        /* DEBUG_LOG("reading change form #%u\n", i); */
         err = read_change_form(stream, save->_private->change_forms + i);
         if (err) {
             return err;
@@ -975,6 +1010,8 @@ static cg_err_t read_save_data(FILE *stream, struct savegame *save)
     /*
      * Read global data table 3.
      */
+    DEBUG_LOG("0x%08lx: Reading global data table 3\n", ftell(stream));
+
     err = read_global_data_table(stream, save, loc.num_globals3);
 
     if (err) {
@@ -987,6 +1024,8 @@ static cg_err_t read_save_data(FILE *stream, struct savegame *save)
     if (!get_leu32(stream, &save->num_form_ids)) {
         return CG_EOF;
     }
+
+    DEBUG_LOG("0x%08lx: Reading %u form IDs\n", ftell(stream), save->num_form_ids);
 
     err = read_le32_array(stream, &save->form_ids, save->num_form_ids);
 
@@ -1001,6 +1040,8 @@ static cg_err_t read_save_data(FILE *stream, struct savegame *save)
         return CG_EOF;
     }
 
+    DEBUG_LOG("0x%08lx: Reading %u world spaces\n", ftell(stream), save->num_world_spaces);
+
     err = read_le32_array(stream, &save->world_spaces, save->num_world_spaces);
 
     if (err) {
@@ -1014,6 +1055,7 @@ static cg_err_t read_save_data(FILE *stream, struct savegame *save)
         return CG_EOF;
     }
 
+    DEBUG_LOG("0x%08lx: Reading unknown table\n", ftell(stream));
     err = alloc_and_read_chunk(stream, &save->_private->unknown3, block_size);
 
     return err;
@@ -1051,13 +1093,24 @@ static cg_err_t read_savefile(FILE *stream, struct savegame *save)
     {
         char file_signature[48];
 
+        DEBUG_LOG("0x%08lx: Reading file signature\n", ftell(stream));
+
         if (fread(file_signature, sizeof(file_signature), 1, stream) != 1) {
             return CG_EOF;
         }
 
         if (!memcmp(file_signature, TESV_SIGNATURE, strlen(TESV_SIGNATURE))) {
+            DEBUG_LOG("TESV file signature detected\n");
+
             save->game = SKYRIM;
             block_size = strlen(TESV_SIGNATURE);
+        }
+        else if(!memcmp(file_signature, FO4_SIGNATURE, strlen(FO4_SIGNATURE))) {
+            DEBUG_LOG("Fallout 4 file signature detected\n");
+
+            save->game = FALLOUT4;
+            block_size = strlen(FO4_SIGNATURE);
+            return CG_UNSUPPORTED;
         }
         else {
             return CG_UNSUPPORTED;
@@ -1077,11 +1130,16 @@ static cg_err_t read_savefile(FILE *stream, struct savegame *save)
         return CG_EOF;
     }
 
+
+    DEBUG_LOG("0x%08lx: Reading file header\n", ftell(stream));
+
     if (!get_leu32(stream, &save->_private->file_version)) {
         return CG_EOF;
     }
 
-    if (save->_private->file_version > 12) {
+    DEBUG_LOG("File version: %u\n", save->_private->file_version);
+
+    if (save->_private->file_version > 15) {
         return CG_UNSUPPORTED;
     }
 
@@ -1127,6 +1185,8 @@ static cg_err_t read_savefile(FILE *stream, struct savegame *save)
         return CG_NO_MEM;
     }
 
+    DEBUG_LOG("0x%08lx: Reading %u bytes of snapshot data\n", ftell(stream), save->snapshot_size);
+
     if (fread(save->snapshot_data, save->snapshot_size, 1, stream) != 1) {
         return CG_EOF;
     }
@@ -1138,7 +1198,7 @@ static cg_err_t read_savefile(FILE *stream, struct savegame *save)
      * temporary stream and continue reading from there.
      */
     if (save->_private->file_version != 12u) {
-        /* Save file contains no compression information. */
+        DEBUG_LOG("Save file contains no compression information\n");
         return read_save_data(stream, save);
     }
 
@@ -1157,8 +1217,6 @@ static cg_err_t read_savefile(FILE *stream, struct savegame *save)
         return CG_FTELL;
     }
 
-    DEBUG_LOG("save data length information begins at 0x%08lx\n", ftell(stream));
-
     /* Read compression related sizes. */
     uncompressed.size = get_leu32_or_zero(stream);
     compressed.size   = get_leu32_or_zero(stream);
@@ -1166,6 +1224,9 @@ static cg_err_t read_savefile(FILE *stream, struct savegame *save)
     if (feof(stream) || ferror(stream)) {
         return CG_EOF;
     }
+
+    DEBUG_LOG("Save data uncompressed length: %u\n", uncompressed.size);
+    DEBUG_LOG("Save data compressed length:   %u\n", compressed.size);
 
     /* Allocate buffers for decompression. */
     uncompressed.data = malloc(uncompressed.size);
@@ -1186,20 +1247,20 @@ static cg_err_t read_savefile(FILE *stream, struct savegame *save)
     /*
      * Decompress save data.
      */
+    DEBUG_LOG("Decompressing save data\n");
+
     if (save->_private->compressor == NO_COMPRESSION) {
         eprintf("No handler for uncompressed save data\n");
         exit(1);
     }
     else if (save->_private->compressor == LZ4) {
-        DEBUG_LOG("savefile is LZ4 compressed.\n");
         decompress_rc = lz4_decompress(compressed.data, uncompressed.data, compressed.size, uncompressed.size);
     }
     else if (save->_private->compressor == ZLIB) {
-        DEBUG_LOG("savefile is ZLIB compressed.\n");
         decompress_rc = zlib_decompress(compressed.data, uncompressed.data, compressed.size, uncompressed.size);
     }
     else {
-        eprintf("Unknown compression\n");
+        DEBUG_LOG("Unknown compression type: %u\n", save->_private->compressor);
         free(uncompressed.data);
         free(compressed.data);
         return CG_UNSUPPORTED;
@@ -1213,7 +1274,8 @@ static cg_err_t read_savefile(FILE *stream, struct savegame *save)
         return CG_CORRUPT;
     }
 
-    DUMP_DATA("uncompressed_save_data_r", uncompressed.data, uncompressed.size, start_of_save_data);
+    DEBUG_LOG("Dumping decompressed save data\n");
+    DUMP_DATA("decompressed_save_data", uncompressed.data, uncompressed.size, start_of_save_data);
 
     temp_stream = tmpfile();
     if (!temp_stream) {
@@ -1261,12 +1323,16 @@ struct savegame *cengine_savefile_read(const char *filename)
         return NULL;
     }
 
+    DEBUG_LOG("Opening save file %s\n", filename);
+
     stream = fopen(filename, "rb");
     if (!stream) {
         perror("fopen");
         free(save);
         return NULL;
     }
+
+    DEBUG_LOG("Reading save file %s\n", filename);
 
     err = read_savefile(stream, save);
 
@@ -1296,6 +1362,7 @@ struct savegame *cengine_savefile_read(const char *filename)
     (void) fclose(stream);
 
     if (err) {
+        DEBUG_LOG("Error %d occurred while reading save file\n", err);
         savegame_free(save);
         return NULL;
     }
