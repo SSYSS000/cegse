@@ -21,7 +21,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef CEGSE_CENGINE_SAVEFILE_H
 #define CEGSE_CENGINE_SAVEFILE_H
 
-#include <time.h>
 #include <stdint.h>
 
 typedef uint32_t ref_t;
@@ -141,7 +140,9 @@ struct savegame {
 	uint32_t sex;
 	float current_xp;
 	float target_xp;
-	time_t filetime;
+
+    /* Windows API FILETIME. */
+	uint64_t filetime;
 
 	uint32_t snapshot_width;
 	uint32_t snapshot_height;

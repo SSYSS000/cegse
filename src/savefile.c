@@ -65,8 +65,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define VSVAL_MAX 4194303u
 
-typedef uint64_t FILETIME;
-
 typedef enum cg_err {
     CG_OK = 0,
     CG_UNSUPPORTED,
@@ -325,6 +323,7 @@ static bool has_light_plugins(const struct savegame *f)
     return f->game == FALLOUT4 || (is_skyrim_se(f) && f->_private->form_version >= 78u);
 }
 
+#if 0
 /**
  * @brief Convert a FILETIME to a time_t.
  *
@@ -348,6 +347,7 @@ static inline FILETIME time_to_filetime(time_t t)
 {
     return (FILETIME)(t + 11644473600) * 10000000;
 }
+#endif
 
 static int encode_vsval(FILE *stream, uint32_t value)
 {
