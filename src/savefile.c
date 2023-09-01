@@ -304,12 +304,18 @@ static void print_locations_table(const struct location_table *t)
 
 static bool supports_save_file_compression(const struct savegame *save)
 {
-    return save->_private->file_version >= 12;
+    return save->game == SKYRIM && save->_private->file_version >= 12;
 }
 
 static bool supports_light_plugins(const struct savegame *save)
 {
-    return save->_private->file_version >= 12;
+    switch (save->game) {
+    case SKYRIM:
+        return save->_private->file_version >= 12 && save->_private->form_version >= 78;
+
+    case FALLOUT4:
+        return save->_private->file_version >= 12;
+    }
 }
 
 static unsigned snapshot_pixel_width(const struct savegame *save)
