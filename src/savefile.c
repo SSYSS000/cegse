@@ -2075,6 +2075,10 @@ static void *mmap_entire_file_r(const char *filename, size_t *pfsize)
 
 static void free_savefile_private(struct savegame_private *private)
 {
+    if (!private) {
+        return;
+    }
+
     free(private->global2);
     free(private->global4);
     free(private->global5);
