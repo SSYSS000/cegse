@@ -1080,13 +1080,6 @@ static cg_err_t read_savefile(FILE *stream, struct savegame *save)
     /*
      * Read the snapshot.
      */
-    if (save->_private->file_version >= 11u) {
-        save->snapshot_bytes_per_pixel = 4;
-    }
-    else {
-        save->snapshot_bytes_per_pixel = 3;
-    }
-
     save->snapshot_bytes_per_pixel = snapshot_pixel_width(save);
     save->snapshot_size = save->snapshot_width * save->snapshot_height;
     save->snapshot_size *= save->snapshot_bytes_per_pixel;
