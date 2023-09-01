@@ -1,7 +1,4 @@
 /*
-CEGSE allows the manipulation and the inspection of Creation Engine
-game save files.
-
 Copyright (C) 2022  SSYSS000
 
 This program is free software; you can redistribute it and/or

@@ -1,7 +1,4 @@
 /*
-CEGSE allows the manipulation and the inspection of Creation Engine
-game save files.
-
 Copyright (C) 2021  SSYSS000
 
 This program is free software; you can redistribute it and/or
@@ -29,6 +26,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define MIN(a, b)           ((a) < (b) ? (a) : (b))
 #define MAX(a, b)           ((a) > (b) ? (a) : (b))
+
+#define SWAP(a, b) do {                                                     \
+    typeof(a) tmp = a;                                                      \
+    a = b;                                                                  \
+    b = tmp;                                                                \
+} while (0)
 
 /* Like printf but prints to stderr. */
 #define eprintf(...)        fprintf(stderr, __VA_ARGS__)

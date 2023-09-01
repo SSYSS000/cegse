@@ -26,6 +26,9 @@ add_executable(${PROJECT_NAME}
     src/main.c
     src/savefile.h
     src/savefile.c
+    src/mem_types.c
+    src/mem_types.h
+    src/mem_type_casts.h
 )
 
 target_link_libraries(${PROJECT_NAME} lz4 z)

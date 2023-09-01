@@ -1,7 +1,4 @@
 /*
-CEGSE allows the manipulation and the inspection of Creation Engine
-game save files.
-
 Copyright (C) 2023  SSYSS000
 
 This program is free software; you can redistribute it and/or
@@ -49,7 +46,7 @@ struct misc_stat {
 struct weather {
     ref_t climate;
     ref_t weather;
-    ref_t prev_weather;
+    ref_t prev_weather; /* Equals zero only if weather is not transitioning. */
     ref_t unk_weather1;
     ref_t unk_weather2;
     ref_t regn_weather;
@@ -71,25 +68,43 @@ struct weather {
       * Sanctuary in Fallout.
       */
     uint32_t data3;
+    /*
+     * This went from 1 to 0 when went indoors. data4 length changed to 0 too.
+     */
     uint8_t flags;
 
     uint32_t data4_sz;
-    unsigned char *data4;    /* Only present if flags has bit 0 or 1 set. */
 
     /*
+     * data4: Only present if flags has bit 0 or 1 set.
+     *
      * If flags & 0x1:
      * data4 {
-     *     u16, (?)
-     *     i8, (?)
-     *     i8, (?)
+     *     uint32 (= 0x7f7fffff)
+     *     float32,
+     *     u8 ?,
+     *     refid ?,
+     *     uint16 ? (= 0),
+     *     uint16 ? (= 0x40),
+     *     uint16 ? (= 0x14)
+     *     refid ?,
+     *     refid ?,
+     *     uint32 ? (= 0x1), Skyrim SE form version 77 ends here, 78 keeps going.
      *
-     *     seems to be incrementing rapidly in game.
-     *     cannot be vsval or ref_id.
-     *     u8[3],
+     *     some of the strings present here were also present in change form type 0
+     *     and global data type 1001.
+     *     [wstring,
+     *     uint32,
+     *     wstring,
+     *     uint32,
+     *     wstring,
+     *     uint32],
+     *
      *     ...
+     *     uint32 (the very last one, always = 0x1)
      * }
-     *
      */
+    unsigned char *data4;
 };
 
 struct player_location {
@@ -127,7 +142,7 @@ struct global_variable {
     float value;
 };
 
-struct savegame_private;
+struct psavegame;
 struct savegame {
     enum game game;
     uint32_t save_num;
@@ -182,7 +197,7 @@ struct savegame {
     uint32_t *world_spaces;
 
     /* Information needed to rewrite savefile properly. */
-    struct savegame_private *_private;
+    struct psavegame *priv;
 };
 
 /*

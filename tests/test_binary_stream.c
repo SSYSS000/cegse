@@ -8,16 +8,16 @@ int main()
     size_t buffer_size;
 
     assert(stream = open_memstream(&buffer, &buffer_size));
-    assert(put_u8(stream,   0x12) == sizeof(uint8_t));
-    assert(put_u8(stream,   -0x12) == sizeof(uint8_t));
-    assert(put_le16(stream, 0x1234) == sizeof(uint16_t));
-    assert(put_le16(stream, -0x1234) == sizeof(uint16_t));
-    assert(put_le32(stream, 0x12345678) == sizeof(uint32_t));
-    assert(put_le32(stream, -0x12345678) == sizeof(uint32_t));
-    assert(put_le64(stream, 0x1234567890123456) == sizeof(uint64_t));
-    assert(put_le64(stream, -0x1234567890123456) == sizeof(uint64_t));
-    assert(put_be24(stream, 0x123456) == 3);
-    assert(put_le32_ieee754(stream, 2.0f) == 4);
+    assert(put_u8(stream,   0x12) == 1);
+    assert(put_u8(stream,   -0x12) == 1);
+    assert(put_le16(stream, 0x1234) == 1);
+    assert(put_le16(stream, -0x1234) == 1);
+    assert(put_le32(stream, 0x12345678) == 1);
+    assert(put_le32(stream, -0x12345678) == 1);
+    assert(put_le64(stream, 0x1234567890123456) == 1);
+    assert(put_le64(stream, -0x1234567890123456) == 1);
+    assert(put_be24(stream, 0x123456) == 1);
+    assert(put_le32_ieee754(stream, 2.0f) == 1);
     assert(fclose(stream) != EOF);
 
     ptr = buffer;
@@ -51,14 +51,14 @@ int main()
     int64_t i64;
 
     assert(stream = fmemopen(buffer, buffer_size, "rb"));
-    assert(get_u8(stream, &u8) == sizeof(uint8_t) && u8 == 0x12);
-    assert(get_i8_or_zero(stream) == -0x12);
-    assert(get_leu16(stream, &u16) == sizeof(uint16_t) && u16 == 0x1234);
-    assert(get_lei16(stream, &i16) == sizeof(int16_t)  && i16 == -0x1234);
-    assert(get_leu32(stream, &u32) == sizeof(uint32_t) && u32 == 0x12345678);
-    assert(get_lei32(stream, &i32) == sizeof(int32_t)  && i32 == -0x12345678);
-    assert(get_leu64(stream, &u64) == sizeof(uint64_t) && u64 == 0x1234567890123456);
-    assert(get_lei64(stream, &i64) == sizeof(int64_t)  && i64 == -0x1234567890123456);
+    assert(get_u8(stream, &u8) == 1 && u8 == 0x12);
+    assert((int8_t)get_u8_or_zero(stream) == -0x12);
+    assert(get_le16(stream, &u16) == 1 && u16 == 0x1234);
+    assert(get_le16(stream, &i16) == 1 && i16 == -0x1234);
+    assert(get_le32(stream, &u32) == 1 && u32 == 0x12345678);
+    assert(get_le32(stream, &i32) == 1 && i32 == -0x12345678);
+    assert(get_le64(stream, &u64) == 1 && u64 == 0x1234567890123456);
+    assert(get_le64(stream, &i64) == 1 && i64 == -0x1234567890123456);
     assert(get_beu24_or_zero(stream) == 0x123456);
     assert(get_le32_ieee754_or_zero(stream) == 2.0f);
 

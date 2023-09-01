@@ -1,7 +1,4 @@
 /*
-CEGSE allows the manipulation and the inspection of Creation Engine
-game save files.
-
 Copyright (C) 2021  SSYSS000
 
 This program is free software; you can redistribute it and/or
@@ -22,24 +19,22 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef CEGSE_COMPRESSION_H
 #define CEGSE_COMPRESSION_H
 
-typedef int (*compress_fn_t)(const void *, void *, int, int);
-typedef int (*decompress_fn_t)(const void *, void *, int, int);
+#include <sys/types.h>
+#include "mem_types.h"
+
+typedef int (*compress_fn_t)(struct cregion src, struct region dest);
+typedef int (*decompress_fn_t)(struct cregion src, struct region dest);
 
 /*
  * Return compressed size on success or -1 on failure.
  */
-int lz4_compress(const void *src, void *dest, int src_size, int dest_size);
-
-int zlib_compress(const void *src, void *dest, int src_size, int dest_size);
-
-/*
- * Return uncompressed size on success or -1 on failure.
- */
-int lz4_decompress(const void *src, void *dest, int src_size, int dest_size);
+ssize_t lz4_compress(struct cregion src, struct region dest);
+ssize_t zlib_compress(struct cregion src, struct region dest);
 
 /*
  * Return uncompressed size on success or -1 on failure.
  */
-int zlib_decompress(const void *src, void *dest, int src_size, int dest_size);
+ssize_t lz4_decompress(struct cregion src, struct region dest);
+ssize_t zlib_decompress(struct cregion src, struct region dest);
 
 #endif /* CEGSE_COMPRESSION_H */

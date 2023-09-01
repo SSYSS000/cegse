@@ -1,7 +1,4 @@
 /*
-CEGSE allows the manipulation and the inspection of Creation Engine
-game save files.
-
 Copyright (C) 2021  SSYSS000
 
 This program is free software; you can redistribute it and/or
@@ -19,49 +16,70 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include <assert.h>
+#include <string.h>
 #include <errno.h>
+
 #include <lz4.h>
 #include <zlib.h>
-#include <string.h>
+
 #include "compression.h"
 #include "defines.h"
 
-int lz4_compress(const void *src, void *dest, int src_size, int dest_size)
+ssize_t lz4_compress(struct cregion src, struct region dest)
 {
-    int comp_size = LZ4_compress_default(src, dest, src_size, dest_size);
-    if (comp_size == 0) {
+    int result;
+
+    /* Check limits. */
+    if (src.size > INT_MAX) {
+        src.size = INT_MAX;
+    }
+
+    if (dest.size > INT_MAX) {
+        dest.size = INT_MAX;
+    }
+
+    result = LZ4_compress_default(src.data, dest.data, src.size, dest.size);
+
+    if (result <= 0) {
         eprintf("lz4_compress: compression failed\n");
         return -1;
     }
 
-    return comp_size;
+    return result;
 }
 
-int zlib_compress(const void *src, void *dest, int src_size, int dest_size)
+ssize_t zlib_compress(struct cregion src, struct region dest)
 {
     (void) src;
     (void) dest;
-    (void) src_size;
-    (void) dest_size;
+
     eprintf("zlib_compress: %s\n", strerror(ENOSYS));
+
     return -1;
 }
 
-int lz4_decompress(const void *src, void *dest, int src_size, int dest_size)
+ssize_t lz4_decompress(struct cregion src, struct region dest)
 {
-    int rc = LZ4_decompress_safe(src, dest, src_size, dest_size);
-    if (rc < 0) {
+    int result;
+
+    result = LZ4_decompress_safe(src.data, dest.data, src.size, dest.size);
+
+    if (result < 0) {
         eprintf("lz4_decompress: data malformed\n");
         return -1;
     }
-    return rc;
+
+    return result;
 }
 
-int zlib_decompress(const void *src, void *dest, int src_size, int dest_size)
+ssize_t zlib_decompress(struct cregion src, struct region dest)
 {
-    uLongf zdest_len = dest_size;
-    int rc = uncompress(dest, &zdest_len, src, src_size);
-    if (rc != Z_OK) {
+    uLongf zdest_len;
+
+    zdest_len = dest.size;
+
+    if (uncompress(dest.data, &zdest_len, src.data, src.size) != Z_OK) {
         eprintf("zlib_decompress: decompression failed\n");
         return -1;
     }
