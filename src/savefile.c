@@ -225,9 +225,9 @@ struct change_form {
 };
 
 enum compressor {
-    NO_COMPRESSION,
-    ZLIB,
-    LZ4,
+    NO_COMPRESSION = 0,
+    ZLIB           = 1,
+    LZ4            = 2,
 };
 
 struct savegame_private {
@@ -1058,8 +1058,8 @@ static cg_err_t read_savefile(FILE *stream, struct savegame *save)
         }
 
         /* Validate. */
-        if (!(0 <= compression_type && compression_type <= 2)) {
-            DEBUG_LOG("Read an invalid compression type: %u \n", compression_type);
+        if (!(compression_type <= 2)) {
+            DEBUG_LOG("Read an invalid compression type: %u\n", compression_type);
             return CG_CORRUPT;
         }
 
