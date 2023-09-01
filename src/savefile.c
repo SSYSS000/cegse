@@ -471,8 +471,8 @@ static cg_err_t read_le32_array(FILE *stream, uint32_t **ptr, size_t n)
 
 static cg_err_t read_le16_str_array(FILE *stream, char ***ptr, size_t length)
 {
+    cg_err_t err = CG_OK;
     char **array;
-    cg_err_t err;
     size_t i;
 
     if (length == 0) {
