@@ -29,9 +29,9 @@ extern FILE *debug_log_file;
 void logging(void);
 
 #if !defined(NDEBUG)
-# define DEBUG_LOG(fmt, ...) 		if (debug_log_file) fprintf(debug_log_file, fmt, ##__VA_ARGS__)
+# define DEBUG_LOG(fmt, ...) if (debug_log_file) fprintf(debug_log_file, fmt, ##__VA_ARGS__)
 #else
-# define DEBUG_LOG(...)				(void)0
+# define DEBUG_LOG(...) (void)0
 #endif /* !defined(NDEBUG) */
 
 #endif /* CEGSE_LOG_H */

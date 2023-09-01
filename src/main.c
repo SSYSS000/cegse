@@ -27,32 +27,32 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 int main(int argc, char **argv)
 {
-	struct savegame *save;
-	int rc;
+    struct savegame *save;
+    int rc;
 
-	logging();
+    logging();
 
-	if (argc < 2) {
-		eprintf("usage: %s path/to/savefile\n", argv[0]);
-		return EXIT_FAILURE;
-	}
+    if (argc < 2) {
+        eprintf("usage: %s path/to/savefile\n", argv[0]);
+        return EXIT_FAILURE;
+    }
 
-	save = cengine_savefile_read(argv[1]);
-	if (!save) {
-		eprintf("fail\n");
-		return EXIT_FAILURE;
-	}
+    save = cengine_savefile_read(argv[1]);
+    if (!save) {
+        eprintf("fail\n");
+        return EXIT_FAILURE;
+    }
 
 
 
-	rc = cengine_savefile_write("written_savefile", save);
-	if (rc == -1) {
-		eprintf("failed to write file\n");
-		savegame_free(save);
-		return EXIT_FAILURE;
-	}
+    rc = cengine_savefile_write("written_savefile", save);
+    if (rc == -1) {
+        eprintf("failed to write file\n");
+        savegame_free(save);
+        return EXIT_FAILURE;
+    }
 
-	savegame_free(save);
+    savegame_free(save);
 
-	return EXIT_SUCCESS;
+    return EXIT_SUCCESS;
 }

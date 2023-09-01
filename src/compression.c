@@ -28,43 +28,43 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 int lz4_compress(const void *src, void *dest, int src_size, int dest_size)
 {
-	int comp_size = LZ4_compress_default(src, dest, src_size, dest_size);
-	if (comp_size == 0) {
-		eprintf("lz4_compress: compression failed\n");
-		return -1;
-	}
+    int comp_size = LZ4_compress_default(src, dest, src_size, dest_size);
+    if (comp_size == 0) {
+        eprintf("lz4_compress: compression failed\n");
+        return -1;
+    }
 
-	return comp_size;
+    return comp_size;
 }
 
 int zlib_compress(const void *src, void *dest, int src_size, int dest_size)
 {
-	(void) src;
-	(void) dest;
-	(void) src_size;
-	(void) dest_size;
-	eprintf("zlib_compress: %s\n", strerror(ENOSYS));
-	return -1;
+    (void) src;
+    (void) dest;
+    (void) src_size;
+    (void) dest_size;
+    eprintf("zlib_compress: %s\n", strerror(ENOSYS));
+    return -1;
 }
 
 int lz4_decompress(const void *src, void *dest, int src_size, int dest_size)
 {
-	int rc = LZ4_decompress_safe(src, dest, src_size, dest_size);
-	if (rc < 0) {
-		eprintf("lz4_decompress: data malformed\n");
-		return -1;
-	}
-	return rc;
+    int rc = LZ4_decompress_safe(src, dest, src_size, dest_size);
+    if (rc < 0) {
+        eprintf("lz4_decompress: data malformed\n");
+        return -1;
+    }
+    return rc;
 }
 
 int zlib_decompress(const void *src, void *dest, int src_size, int dest_size)
 {
-	uLongf zdest_len = dest_size;
-	int rc = uncompress(dest, &zdest_len, src, src_size);
-	if (rc != Z_OK) {
-		eprintf("zlib_decompress: decompression failed\n");
-		return -1;
-	}
+    uLongf zdest_len = dest_size;
+    int rc = uncompress(dest, &zdest_len, src, src_size);
+    if (rc != Z_OK) {
+        eprintf("zlib_decompress: decompression failed\n");
+        return -1;
+    }
 
-	return zdest_len;
+    return zdest_len;
 }

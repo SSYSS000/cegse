@@ -26,42 +26,42 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 static void die(const char *msg)
 {
-	write(STDERR_FILENO, msg, strlen(msg));
-	abort();
+    write(STDERR_FILENO, msg, strlen(msg));
+    abort();
 }
 
 void *memdup(const void *ptr, size_t size)
 {
-	void *data = malloc(size);
-	if (data) {
-		memcpy(data, ptr, size);
-	}
-	return data;
+    void *data = malloc(size);
+    if (data) {
+        memcpy(data, ptr, size);
+    }
+    return data;
 }
 
 void *xmalloc(size_t size)
 {
-	void *mem = malloc(size);
-	if (!mem) {
-		die("Out of memory\n");
-	}
-	return mem;
+    void *mem = malloc(size);
+    if (!mem) {
+        die("Out of memory\n");
+    }
+    return mem;
 }
 
 void *xcalloc(size_t nmemb, size_t size)
 {
-	void *mem = calloc(nmemb, size);
-	if (!mem) {
-		die("Out of memory\n");
-	}
-	return mem;
+    void *mem = calloc(nmemb, size);
+    if (!mem) {
+        die("Out of memory\n");
+    }
+    return mem;
 }
 
 void *xrealloc(void *ptr, size_t size)
 {
-	void *mem = realloc(ptr, size);
-	if (!mem) {
-		die("Out of memory\n");
-	}
-	return mem;
+    void *mem = realloc(ptr, size);
+    if (!mem) {
+        die("Out of memory\n");
+    }
+    return mem;
 }

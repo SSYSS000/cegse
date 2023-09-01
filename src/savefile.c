@@ -32,38 +32,33 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "savefile.h"
 #include "log.h"
 
-#define perror(str) eprintf("%s:%d: %s: %s\n", __FILE__, __LINE__, str, strerror(errno))
+#define perror(str)              eprintf("%s:%d: %s: %s\n", __FILE__, __LINE__, str, strerror(errno))
 
-#define put_ref_id                          put_be24
-#define get_ref_id                          get_beu24_or_zero
+#define put_ref_id               put_be24
+#define get_ref_id               get_beu24_or_zero
 
-#define TESV_SIGNATURE                      "TESV_SAVEGAME"
-#define FO4_SIGNATURE                       "FO4_SAVEGAME"
+#define TESV_SIGNATURE           "TESV_SAVEGAME"
+#define FO4_SIGNATURE            "FO4_SAVEGAME"
 
-#ifndef FREE_AND_NULL
-#define FREE_AND_NULL(x) do { free(x); x = NULL; } while (0)
-#endif
-
-#define REF_TYPE(ref_id)	                ((ref_id) >> 22u)
-#define REF_VALUE(ref_id)	                ((ref_id) & 0x3FFFFFu)
+#define REF_TYPE(ref_id)         ((ref_id) >> 22u)
+#define REF_VALUE(ref_id)        ((ref_id) & 0x3FFFFFu)
 
 /*
- * Give a Reference ID value a type:
+ * These macros assign ref IDs a type:
  * 0 = Index into the Form ID array
  * 1 = Regular (reference to Skyrim.esm)
  * 2 = Created (plugin index of 0xFF)
  */
-#define REF_INDEX(val)		    (REF_VALUE(val))
-#define REF_REGULAR(val)	    (REF_VALUE(val) | (1u << 22u))
-#define REF_CREATED(val)	    (REF_VALUE(val) | (2u << 22u))
-#define REF_UNKNOWN(val)	    (REF_VALUE(val) | (3u << 22u))
+#define REF_INDEX(val)            (REF_VALUE(val))
+#define REF_REGULAR(val)          (REF_VALUE(val) | (1u << 22u))
+#define REF_CREATED(val)          (REF_VALUE(val) | (2u << 22u))
 
-#define REF_IS_INDEX(ref_id)	((ref_id) != 0u && REF_TYPE(ref_id) == 0u)
-#define REF_IS_REGULAR(ref_id)	((ref_id) == 0u || REF_TYPE(ref_id) == 1u)
-#define REF_IS_CREATED(ref_id)	(REF_TYPE(ref_id) == 2u)
-#define REF_IS_UNKNOWN(ref_id)	(REF_TYPE(ref_id) == 3u)
+#define REF_IS_INDEX(ref_id)      ((ref_id) != 0u && REF_TYPE(ref_id) == 0u)
+#define REF_IS_REGULAR(ref_id)    ((ref_id) == 0u || REF_TYPE(ref_id) == 1u)
+#define REF_IS_CREATED(ref_id)    (REF_TYPE(ref_id) == 2u)
+#define REF_IS_UNKNOWN(ref_id)    (REF_TYPE(ref_id) == 3u)
 
-#define VSVAL_MAX 4194303u
+#define VSVAL_MAX                 4194303u
 
 typedef enum cg_err {
     CG_OK = 0,
@@ -134,89 +129,89 @@ enum change_form_type {
 };
 
 enum change_flags {
-    CHANGE_FORM_FLAGS				= 0x00000001,
-    CHANGE_CLASS_TAG_SKILLS				= 0x00000002,
-    CHANGE_FACTION_FLAGS				= 0x00000002,
-    CHANGE_FACTION_REACTIONS			= 0x00000004,
-    CHANGE_FACTION_CRIME_COUNTS			= 0x80000000,
-    CHANGE_TALKING_ACTIVATOR_SPEAKER		= 0x00800000,
-    CHANGE_BOOK_TEACHES				= 0x00000020,
-    CHANGE_BOOK_READ				= 0x00000040,
-    CHANGE_DOOR_EXTRA_TELEPORT			= 0x00020000,
-    CHANGE_INGREDIENT_USE				= 0x80000000,
-    CHANGE_ACTOR_BASE_DATA				= 0x00000002,
-    CHANGE_ACTOR_BASE_ATTRIBUTES			= 0x00000004,
-    CHANGE_ACTOR_BASE_AIDATA			= 0x00000008,
-    CHANGE_ACTOR_BASE_SPELLLIST			= 0x00000010,
-    CHANGE_ACTOR_BASE_FULLNAME			= 0x00000020,
-    CHANGE_ACTOR_BASE_FACTIONS			= 0x00000040,
-    CHANGE_NPC_SKILLS				= 0x00000200,
-    CHANGE_NPC_CLASS				= 0x00000400,
-    CHANGE_NPC_FACE					= 0x00000800,
-    CHANGE_NPC_DEFAULT_OUTFIT			= 0x00001000,
-    CHANGE_NPC_SLEEP_OUTFIT				= 0x00002000,
-    CHANGE_NPC_GENDER				= 0x01000000,
-    CHANGE_NPC_RACE					= 0x02000000,
-    CHANGE_LEVELED_LIST_ADDED_OBJECT		= 0x80000000,
-    CHANGE_NOTE_READ				= 0x80000000,
-    CHANGE_CELL_FLAGS				= 0x00000002,
-    CHANGE_CELL_FULLNAME				= 0x00000004,
-    CHANGE_CELL_OWNERSHIP				= 0x00000008,
-    CHANGE_CELL_EXTERIOR_SHORT			= 0x10000000,
-    CHANGE_CELL_EXTERIOR_CHAR			= 0x20000000,
-    CHANGE_CELL_DETACHTIME				= 0x40000000,
-    CHANGE_CELL_SEENDATA				= 0x80000000,
-    CHANGE_REFR_MOVE				= 0x00000002,
-    CHANGE_REFR_HAVOK_MOVE				= 0x00000004,
-    CHANGE_REFR_CELL_CHANGED			= 0x00000008,
-    CHANGE_REFR_SCALE				= 0x00000010,
-    CHANGE_REFR_INVENTORY				= 0x00000020,
-    CHANGE_REFR_EXTRA_OWNERSHIP			= 0x00000040,
-    CHANGE_REFR_BASEOBJECT				= 0x00000080,
-    CHANGE_REFR_PROMOTED				= 0x02000000,
-    CHANGE_REFR_EXTRA_ACTIVATING_CHILDREN		= 0x04000000,
-    CHANGE_REFR_LEVELED_INVENTORY			= 0x08000000,
-    CHANGE_REFR_ANIMATION				= 0x10000000,
-    CHANGE_REFR_EXTRA_ENCOUNTER_ZONE		= 0x20000000,
-    CHANGE_REFR_EXTRA_CREATED_ONLY			= 0x40000000,
-    CHANGE_REFR_EXTRA_GAME_ONLY			= 0x80000000,
-    CHANGE_ACTOR_LIFESTATE				= 0x00000400,
-    CHANGE_ACTOR_EXTRA_PACKAGE_DATA			= 0x00000800,
-    CHANGE_ACTOR_EXTRA_MERCHANT_CONTAINER		= 0x00001000,
-    CHANGE_ACTOR_EXTRA_DISMEMBERED_LIMBS		= 0x00020000,
-    CHANGE_ACTOR_LEVELED_ACTOR			= 0x00040000,
-    CHANGE_ACTOR_DISPOSITION_MODIFIERS		= 0x00080000,
-    CHANGE_ACTOR_TEMP_MODIFIERS			= 0x00100000,
-    CHANGE_ACTOR_DAMAGE_MODIFIERS			= 0x00200000,
-    CHANGE_ACTOR_OVERRIDE_MODIFIERS			= 0x00400000,
-    CHANGE_ACTOR_PERMANENT_MODIFIERS		= 0x00800000,
-    CHANGE_OBJECT_EXTRA_ITEM_DATA			= 0x00000400,
-    CHANGE_OBJECT_EXTRA_AMMO			= 0x00000800,
-    CHANGE_OBJECT_EXTRA_LOCK			= 0x00001000,
-    CHANGE_OBJECT_EMPTY				= 0x00200000,
-    CHANGE_OBJECT_OPEN_DEFAULT_STATE		= 0x00400000,
-    CHANGE_OBJECT_OPEN_STATE			= 0x00800000,
-    CHANGE_TOPIC_SAIDONCE				= 0x80000000,
-    CHANGE_QUEST_FLAGS				= 0x00000002,
-    CHANGE_QUEST_SCRIPT_DELAY			= 0x00000004,
-    CHANGE_QUEST_ALREADY_RUN			= 0x04000000,
-    CHANGE_QUEST_INSTANCES				= 0x08000000,
-    CHANGE_QUEST_RUNDATA				= 0x10000000,
-    CHANGE_QUEST_OBJECTIVES				= 0x20000000,
-    CHANGE_QUEST_SCRIPT				= 0x40000000,
-    CHANGE_QUEST_STAGES				= 0x80000000,
-    CHANGE_PACKAGE_WAITING				= 0x40000000,
-    CHANGE_PACKAGE_NEVER_RUN			= 0x80000000,
-    CHANGE_FORM_LIST_ADDED_FORM			= 0x80000000,
-    CHANGE_ENCOUNTER_ZONE_FLAGS			= 0x00000002,
-    CHANGE_ENCOUNTER_ZONE_GAME_DATA			= 0x80000000,
-    CHANGE_LOCATION_KEYWORDDATA			= 0x40000000,
-    CHANGE_LOCATION_CLEARED				= 0x80000000,
-    CHANGE_QUEST_NODE_TIME_RUN			= 0x80000000,
-    CHANGE_RELATIONSHIP_DATA			= 0x00000002,
-    CHANGE_SCENE_ACTIVE				= 0x80000000,
-    CHANGE_BASE_OBJECT_VALUE			= 0x00000002,
-    CHANGE_BASE_OBJECT_FULLNAME			= 0x00000004
+    CHANGE_FORM_FLAGS                             = 0x00000001,
+    CHANGE_CLASS_TAG_SKILLS                       = 0x00000002,
+    CHANGE_FACTION_FLAGS                          = 0x00000002,
+    CHANGE_FACTION_REACTIONS                      = 0x00000004,
+    CHANGE_FACTION_CRIME_COUNTS                   = 0x80000000,
+    CHANGE_TALKING_ACTIVATOR_SPEAKER              = 0x00800000,
+    CHANGE_BOOK_TEACHES                           = 0x00000020,
+    CHANGE_BOOK_READ                              = 0x00000040,
+    CHANGE_DOOR_EXTRA_TELEPORT                    = 0x00020000,
+    CHANGE_INGREDIENT_USE                         = 0x80000000,
+    CHANGE_ACTOR_BASE_DATA                        = 0x00000002,
+    CHANGE_ACTOR_BASE_ATTRIBUTES                  = 0x00000004,
+    CHANGE_ACTOR_BASE_AIDATA                      = 0x00000008,
+    CHANGE_ACTOR_BASE_SPELLLIST                   = 0x00000010,
+    CHANGE_ACTOR_BASE_FULLNAME                    = 0x00000020,
+    CHANGE_ACTOR_BASE_FACTIONS                    = 0x00000040,
+    CHANGE_NPC_SKILLS                             = 0x00000200,
+    CHANGE_NPC_CLASS                              = 0x00000400,
+    CHANGE_NPC_FACE                               = 0x00000800,
+    CHANGE_NPC_DEFAULT_OUTFIT                     = 0x00001000,
+    CHANGE_NPC_SLEEP_OUTFIT                       = 0x00002000,
+    CHANGE_NPC_GENDER                             = 0x01000000,
+    CHANGE_NPC_RACE                               = 0x02000000,
+    CHANGE_LEVELED_LIST_ADDED_OBJECT              = 0x80000000,
+    CHANGE_NOTE_READ                              = 0x80000000,
+    CHANGE_CELL_FLAGS                             = 0x00000002,
+    CHANGE_CELL_FULLNAME                          = 0x00000004,
+    CHANGE_CELL_OWNERSHIP                         = 0x00000008,
+    CHANGE_CELL_EXTERIOR_SHORT                    = 0x10000000,
+    CHANGE_CELL_EXTERIOR_CHAR                     = 0x20000000,
+    CHANGE_CELL_DETACHTIME                        = 0x40000000,
+    CHANGE_CELL_SEENDATA                          = 0x80000000,
+    CHANGE_REFR_MOVE                              = 0x00000002,
+    CHANGE_REFR_HAVOK_MOVE                        = 0x00000004,
+    CHANGE_REFR_CELL_CHANGED                      = 0x00000008,
+    CHANGE_REFR_SCALE                             = 0x00000010,
+    CHANGE_REFR_INVENTORY                         = 0x00000020,
+    CHANGE_REFR_EXTRA_OWNERSHIP                   = 0x00000040,
+    CHANGE_REFR_BASEOBJECT                        = 0x00000080,
+    CHANGE_REFR_PROMOTED                          = 0x02000000,
+    CHANGE_REFR_EXTRA_ACTIVATING_CHILDREN         = 0x04000000,
+    CHANGE_REFR_LEVELED_INVENTORY                 = 0x08000000,
+    CHANGE_REFR_ANIMATION                         = 0x10000000,
+    CHANGE_REFR_EXTRA_ENCOUNTER_ZONE              = 0x20000000,
+    CHANGE_REFR_EXTRA_CREATED_ONLY                = 0x40000000,
+    CHANGE_REFR_EXTRA_GAME_ONLY                   = 0x80000000,
+    CHANGE_ACTOR_LIFESTATE                        = 0x00000400,
+    CHANGE_ACTOR_EXTRA_PACKAGE_DATA               = 0x00000800,
+    CHANGE_ACTOR_EXTRA_MERCHANT_CONTAINER         = 0x00001000,
+    CHANGE_ACTOR_EXTRA_DISMEMBERED_LIMBS          = 0x00020000,
+    CHANGE_ACTOR_LEVELED_ACTOR                    = 0x00040000,
+    CHANGE_ACTOR_DISPOSITION_MODIFIERS            = 0x00080000,
+    CHANGE_ACTOR_TEMP_MODIFIERS                   = 0x00100000,
+    CHANGE_ACTOR_DAMAGE_MODIFIERS                 = 0x00200000,
+    CHANGE_ACTOR_OVERRIDE_MODIFIERS               = 0x00400000,
+    CHANGE_ACTOR_PERMANENT_MODIFIERS              = 0x00800000,
+    CHANGE_OBJECT_EXTRA_ITEM_DATA                 = 0x00000400,
+    CHANGE_OBJECT_EXTRA_AMMO                      = 0x00000800,
+    CHANGE_OBJECT_EXTRA_LOCK                      = 0x00001000,
+    CHANGE_OBJECT_EMPTY                           = 0x00200000,
+    CHANGE_OBJECT_OPEN_DEFAULT_STATE              = 0x00400000,
+    CHANGE_OBJECT_OPEN_STATE                      = 0x00800000,
+    CHANGE_TOPIC_SAIDONCE                         = 0x80000000,
+    CHANGE_QUEST_FLAGS                            = 0x00000002,
+    CHANGE_QUEST_SCRIPT_DELAY                     = 0x00000004,
+    CHANGE_QUEST_ALREADY_RUN                      = 0x04000000,
+    CHANGE_QUEST_INSTANCES                        = 0x08000000,
+    CHANGE_QUEST_RUNDATA                          = 0x10000000,
+    CHANGE_QUEST_OBJECTIVES                       = 0x20000000,
+    CHANGE_QUEST_SCRIPT                           = 0x40000000,
+    CHANGE_QUEST_STAGES                           = 0x80000000,
+    CHANGE_PACKAGE_WAITING                        = 0x40000000,
+    CHANGE_PACKAGE_NEVER_RUN                      = 0x80000000,
+    CHANGE_FORM_LIST_ADDED_FORM                   = 0x80000000,
+    CHANGE_ENCOUNTER_ZONE_FLAGS                   = 0x00000002,
+    CHANGE_ENCOUNTER_ZONE_GAME_DATA               = 0x80000000,
+    CHANGE_LOCATION_KEYWORDDATA                   = 0x40000000,
+    CHANGE_LOCATION_CLEARED                       = 0x80000000,
+    CHANGE_QUEST_NODE_TIME_RUN                    = 0x80000000,
+    CHANGE_RELATIONSHIP_DATA                      = 0x00000002,
+    CHANGE_SCENE_ACTIVE                           = 0x80000000,
+    CHANGE_BASE_OBJECT_VALUE                      = 0x00000002,
+    CHANGE_BASE_OBJECT_FULLNAME                   = 0x00000004
 };
 
 struct change_form {
@@ -224,16 +219,16 @@ struct change_form {
     uint32_t flags;
     uint32_t type;
     uint32_t version;
-    uint32_t length1;	/* Length of data */
-    uint32_t length2;	/* Non-zero value means data is compressed */
+    uint32_t length1;    /* Length of data */
+    uint32_t length2;    /* Non-zero value means data is compressed */
     unsigned char *data;
 };
 
 struct savegame_private {
     /*
-     * Skyrim LE: 9
+     * Skyrim LE: 7,8,9
      * Skyrim SE: 12
-     * Fallout 4: 11?, 15
+     * Fallout 4: 11, 15
      */
     uint32_t file_version;
     uint8_t  form_version;
@@ -267,8 +262,8 @@ struct savegame_private {
     struct chunk *global1004;
     struct chunk *global1005;
 
-	uint32_t num_change_forms;
-	struct change_form *change_forms;
+    uint32_t num_change_forms;
+    struct change_form *change_forms;
 
     /* Data at the end of the savefile. */
     struct chunk *unknown3;
@@ -307,20 +302,19 @@ static void print_locations_table(const struct location_table *t)
     DEBUG_LOG("=============================\n");
 }
 
-static bool is_skyrim_se(const struct savegame *save)
+static bool supports_save_file_compression(const struct savegame *save)
 {
-    return save->_private->file_version == 12u;
+    return save->_private->file_version >= 12;
 }
 
-static bool is_skyrim_le(const struct savegame *save)
+static bool supports_light_plugins(const struct savegame *save)
 {
-    unsigned version = save->_private->file_version;
-    return version <= 7u && version <= 9u;
+    return save->_private->file_version >= 12;
 }
 
-static bool has_light_plugins(const struct savegame *f)
+static unsigned snapshot_pixel_width(const struct savegame *save)
 {
-    return f->game == FALLOUT4 || (is_skyrim_se(f) && f->_private->form_version >= 78u);
+    return save->_private->file_version >= 11 ? 4 : 3;
 }
 
 #if 0
@@ -355,20 +349,20 @@ static int encode_vsval(FILE *stream, uint32_t value)
 
     assert(value <= VSVAL_MAX);
 
-	/*
-	 * 2 least significant bits determine vsval size
-	 *
-	 *    2 LSB    | vsval size
-	 * ------------+------------
-	 *     00	   |   1 octet
-	 *     01	   |   2 octets
-	 *     10	   |   3 octets
-	 */
-	value <<= 2;			/* vsval size information takes 2 bits. */
-	value &= 0xffffffu;		/* vsval max width is 24 bits. */
-	num_octets = ((value >= 0x100u) << (value >= 0x10000u)) + 1;
+    /*
+     * 2 least significant bits determine vsval size
+     *
+     *    2 LSB    | vsval size
+     * ------------+------------
+     *     00       |   1 octet
+     *     01       |   2 octets
+     *     10       |   3 octets
+     */
+    value <<= 2;            /* vsval size information takes 2 bits. */
+    value &= 0xffffffu;        /* vsval max width is 24 bits. */
+    num_octets = ((value >= 0x100u) << (value >= 0x10000u)) + 1;
     value |= num_octets - 1; /* add size information */
-	value = htole32(value);  /* vsval is little endian */
+    value = htole32(value);  /* vsval is little endian */
     return fwrite(&value, 1, num_octets, stream);
 }
 
@@ -524,6 +518,21 @@ static cg_err_t alloc_and_read_chunk(FILE *stream, struct chunk **chunk_out, siz
     *chunk_out = chunk;
 
     return CG_OK;
+}
+
+static void dump_to_file(const char *filename, void *data, size_t size, long offset)
+{
+    FILE *fp = fopen(filename, "w");
+    if (!fp) {
+        return;
+    }
+
+    if (offset > 0) {
+        fseek(fp, offset, SEEK_SET);
+    }
+
+    fwrite(data, size, 1, fp);
+    fclose(fp);
 }
 
 static cg_err_t read_global_data_table(FILE *stream, struct savegame *save, unsigned count)
@@ -881,6 +890,312 @@ static cg_err_t read_change_form(FILE *restrict stream, struct change_form *rest
     return CG_OK;
 }
 
+static cg_err_t read_save_data(FILE *stream, struct savegame *save);
+static cg_err_t read_savefile(FILE *stream, struct savegame *save);
+
+struct savegame *cengine_savefile_read(const char *filename)
+{
+    struct savegame *save;
+    FILE *stream;
+    cg_err_t err;
+
+    save = calloc(1, sizeof(*save));
+    if (!save) {
+        perror("calloc");
+        return NULL;
+    }
+
+    DEBUG_LOG("Opening save file %s\n", filename);
+
+    stream = fopen(filename, "rb");
+    if (!stream) {
+        perror("fopen");
+        free(save);
+        return NULL;
+    }
+
+    DEBUG_LOG("Reading save file %s\n", filename);
+
+    err = read_savefile(stream, save);
+
+    switch (err) {
+    case CG_OK:
+        /* No error. */
+        break;
+    case CG_UNSUPPORTED:
+        eprintf("File cannot be read because its format is unsupported.\n");
+        break;
+    case CG_EOF:
+        if (feof(stream)) {
+            eprintf("File ended too soon. Is the save corrupt?\n");
+        }
+        else if(ferror(stream)) {
+            eprintf("File error occurred.\n");
+        }
+        else {
+            eprintf("bug: Neither EOF nor file error condition set, yet EOF was returned.\n");
+        }
+        break;
+    case CG_NO_MEM:
+        eprintf("Failed to allocate memory.\n");
+        break;
+    }
+
+    (void) fclose(stream);
+
+    if (err) {
+        DEBUG_LOG("Error %d occurred while reading save file\n", err);
+        savegame_free(save);
+        return NULL;
+    }
+
+    return save;
+}
+
+static cg_err_t read_savefile(FILE *stream, struct savegame *save)
+{
+    uint32_t block_size;
+    cg_err_t err;
+
+    save->_private = calloc(1, sizeof(*save->_private));
+
+    if (!save->_private) {
+        return CG_NO_MEM;
+    }
+
+    /*
+     * Check the file signature.
+     */
+    {
+        char file_signature[48];
+
+        DEBUG_LOG("0x%08lx: Reading file signature\n", ftell(stream));
+
+        if (fread(file_signature, sizeof(file_signature), 1, stream) != 1) {
+            return CG_EOF;
+        }
+
+        if (!memcmp(file_signature, TESV_SIGNATURE, strlen(TESV_SIGNATURE))) {
+            DEBUG_LOG("TESV file signature detected\n");
+
+            save->game = SKYRIM;
+            block_size = strlen(TESV_SIGNATURE);
+        }
+        else if(!memcmp(file_signature, FO4_SIGNATURE, strlen(FO4_SIGNATURE))) {
+            DEBUG_LOG("Fallout 4 file signature detected\n");
+
+            save->game = FALLOUT4;
+            block_size = strlen(FO4_SIGNATURE);
+            //return CG_UNSUPPORTED;
+        }
+        else {
+            return CG_UNSUPPORTED;
+        }
+
+        /* Return to the end of the file signature. */
+        if (fseek(stream, block_size, SEEK_SET) == -1) {
+            perror("fseek");
+            return CG_FSEEK;
+        }
+    }
+
+    /*
+     * Read the file header.
+     */
+    if (!get_leu32(stream, &block_size)) {
+        return CG_EOF;
+    }
+
+
+    DEBUG_LOG("0x%08lx: Reading file header\n", ftell(stream));
+
+    if (!get_leu32(stream, &save->_private->file_version)) {
+        return CG_EOF;
+    }
+
+    DEBUG_LOG("File version: %u\n", save->_private->file_version);
+
+    if (save->_private->file_version > 15) {
+        return CG_UNSUPPORTED;
+    }
+
+    save->save_num = get_leu32_or_zero(stream);
+    err = get_le16_str(stream, &save->player_name);
+    if (err) return err;
+    save->level = get_leu32_or_zero(stream);
+    err = get_le16_str(stream, &save->player_location_name);
+    if (err) return err;
+    err = get_le16_str(stream, &save->game_time);
+    if (err) return err;
+    err = get_le16_str(stream, &save->race_id);
+    if (err) return err;
+    save->sex             = get_leu16_or_zero(stream);
+    save->current_xp      = get_le32_ieee754_or_zero(stream);
+    save->target_xp       = get_le32_ieee754_or_zero(stream);
+    save->filetime        = get_leu64_or_zero(stream);
+    save->snapshot_width  = get_leu32_or_zero(stream);
+    save->snapshot_height = get_leu32_or_zero(stream);
+
+    if (supports_save_file_compression(save)) {
+        save->_private->compressor = get_leu16_or_zero(stream);
+
+        DEBUG_LOG("Save file compression algorithm = %s.\n",
+                  save->_private->compressor == LZ4 ? "lz4" :
+                  save->_private->compressor == ZLIB ? "zlib" :
+                  save->_private->compressor == NO_COMPRESSION ? "none" :
+                  "unknown");
+    }
+    else {
+        DEBUG_LOG("No save file compression support\n");
+    }
+
+    if (feof(stream) || ferror(stream)) {
+        return CG_EOF;
+    }
+
+    /*
+     * Read the snapshot.
+     */
+    if (save->_private->file_version >= 11u) {
+        save->snapshot_bytes_per_pixel = 4;
+    }
+    else {
+        save->snapshot_bytes_per_pixel = 3;
+    }
+
+    save->snapshot_bytes_per_pixel = snapshot_pixel_width(save);
+    save->snapshot_size = save->snapshot_width * save->snapshot_height;
+    save->snapshot_size *= save->snapshot_bytes_per_pixel;
+    save->snapshot_data = malloc(save->snapshot_size);
+    if (!save->snapshot_data) {
+        return CG_NO_MEM;
+    }
+
+    DEBUG_LOG("0x%08lx: Reading %u bytes of snapshot data\n", ftell(stream), save->snapshot_size);
+
+    if (fread(save->snapshot_data, save->snapshot_size, 1, stream) != 1) {
+        return CG_EOF;
+    }
+
+    /*
+     * Depending on file version, the save data could be compressed.
+     * If the save file does not contain compression information, just keep
+     * reading from this stream. Otherwise, decompress the save data into a
+     * temporary stream and continue reading from there.
+     */
+    if (!supports_save_file_compression(save)) {
+        return read_save_data(stream, save);
+    }
+
+    /* Save file contains compression information. */
+    struct {
+        uint32_t size;
+        char    *data;
+    } uncompressed, compressed;
+    long start_of_save_data;
+    FILE *temp_stream;
+    int decompress_rc;
+
+    start_of_save_data = ftell(stream);
+    if (start_of_save_data == -1) {
+        perror("ftell");
+        return CG_FTELL;
+    }
+
+    /* Read compression related sizes. */
+    uncompressed.size = get_leu32_or_zero(stream);
+    compressed.size   = get_leu32_or_zero(stream);
+
+    if (feof(stream) || ferror(stream)) {
+        return CG_EOF;
+    }
+
+    DEBUG_LOG("Save data uncompressed length: %u\n", uncompressed.size);
+    DEBUG_LOG("Save data compressed length:   %u\n", compressed.size);
+
+    /* Allocate buffers for decompression. */
+    uncompressed.data = malloc(uncompressed.size);
+    compressed.data   = malloc(compressed.size);
+
+    if (!uncompressed.data || !compressed.data) {
+        free(uncompressed.data);
+        free(compressed.data);
+        return CG_NO_MEM;
+    }
+
+    if (fread(compressed.data, compressed.size, 1, stream) != 1) {
+        free(uncompressed.data);
+        free(compressed.data);
+        return CG_EOF;
+    }
+
+    /*
+     * Decompress save data.
+     */
+    DEBUG_LOG("Decompressing save data\n");
+
+    if (save->_private->compressor == NO_COMPRESSION) {
+        eprintf("No handler for uncompressed save data\n");
+        exit(1);
+    }
+    else if (save->_private->compressor == LZ4) {
+        decompress_rc = lz4_decompress(compressed.data, uncompressed.data, compressed.size, uncompressed.size);
+    }
+    else if (save->_private->compressor == ZLIB) {
+        decompress_rc = zlib_decompress(compressed.data, uncompressed.data, compressed.size, uncompressed.size);
+    }
+    else {
+        DEBUG_LOG("Unknown compression type: %u\n", save->_private->compressor);
+        free(uncompressed.data);
+        free(compressed.data);
+        return CG_UNSUPPORTED;
+    }
+
+    free(compressed.data);
+
+    if (decompress_rc == -1) {
+        eprintf("Decompression failed\n");
+        free(uncompressed.data);
+        return CG_CORRUPT;
+    }
+
+    DEBUG_LOG("Dumping decompressed save data\n");
+    dump_to_file("decompressed_save_data", uncompressed.data, uncompressed.size, start_of_save_data);
+
+    temp_stream = tmpfile();
+    if (!temp_stream) {
+        free(uncompressed.data);
+        return CG_TMPFILE;
+    }
+
+    if (fseek(temp_stream, start_of_save_data, SEEK_SET) == -1) {
+        fclose(temp_stream);
+        free(uncompressed.data);
+        perror("fseek");
+        return CG_FSEEK;
+    }
+
+    if (fwrite(uncompressed.data, uncompressed.size, 1, temp_stream) != 1) {
+        fclose(temp_stream);
+        free(uncompressed.data);
+        return CG_EOF;
+    }
+
+    free(uncompressed.data);
+
+    if (fseek(temp_stream, start_of_save_data, SEEK_SET) == -1) {
+        fclose(temp_stream);
+        perror("fseek");
+        return CG_FSEEK;
+    }
+
+    err = read_save_data(temp_stream, save);
+
+    (void) fclose(temp_stream);
+
+    return err;
+}
+
 static cg_err_t read_save_data(FILE *stream, struct savegame *save)
 {
     struct location_table loc;
@@ -912,7 +1227,7 @@ static cg_err_t read_save_data(FILE *stream, struct savegame *save)
      * light plugin count and light plugin string.
      */
     (void) get_leu32_or_zero(stream);
-    
+
     if (!get_u8(stream, &save->num_plugins)) {
         return CG_EOF;
     }
@@ -927,7 +1242,7 @@ static cg_err_t read_save_data(FILE *stream, struct savegame *save)
     /*
      * Read light plugins.
      */
-    if (has_light_plugins(save)) {
+    if (supports_light_plugins(save)) {
         if (!get_leu16(stream, &save->num_light_plugins)) {
             return CG_EOF;
         }
@@ -1060,315 +1375,6 @@ static cg_err_t read_save_data(FILE *stream, struct savegame *save)
     return err;
 }
 
-static void DUMP_DATA(const char *filename, void *data, size_t size, long offset)
-{
-    FILE *fp = fopen(filename, "w");
-    if (!fp) {
-        return;
-    }
-
-    if (offset > 0) {
-        fseek(fp, offset, SEEK_SET);
-    }
-
-    fwrite(data, size, 1, fp);
-    fclose(fp);
-}
-
-static cg_err_t read_savefile(FILE *stream, struct savegame *save)
-{
-    uint32_t block_size;
-    cg_err_t err;
-
-    save->_private = calloc(1, sizeof(*save->_private));
-
-    if (!save->_private) {
-        return CG_NO_MEM;
-    }
-
-    /*
-     * Check the file signature.
-     */
-    {
-        char file_signature[48];
-
-        DEBUG_LOG("0x%08lx: Reading file signature\n", ftell(stream));
-
-        if (fread(file_signature, sizeof(file_signature), 1, stream) != 1) {
-            return CG_EOF;
-        }
-
-        if (!memcmp(file_signature, TESV_SIGNATURE, strlen(TESV_SIGNATURE))) {
-            DEBUG_LOG("TESV file signature detected\n");
-
-            save->game = SKYRIM;
-            block_size = strlen(TESV_SIGNATURE);
-        }
-        else if(!memcmp(file_signature, FO4_SIGNATURE, strlen(FO4_SIGNATURE))) {
-            DEBUG_LOG("Fallout 4 file signature detected\n");
-
-            save->game = FALLOUT4;
-            block_size = strlen(FO4_SIGNATURE);
-            return CG_UNSUPPORTED;
-        }
-        else {
-            return CG_UNSUPPORTED;
-        }
-
-        /* Return to the end of the file signature. */
-        if (fseek(stream, block_size, SEEK_SET) == -1) {
-            perror("fseek");
-            return CG_FSEEK;
-        }
-    }
-
-    /*
-     * Read the file header.
-     */
-    if (!get_leu32(stream, &block_size)) {
-        return CG_EOF;
-    }
-
-
-    DEBUG_LOG("0x%08lx: Reading file header\n", ftell(stream));
-
-    if (!get_leu32(stream, &save->_private->file_version)) {
-        return CG_EOF;
-    }
-
-    DEBUG_LOG("File version: %u\n", save->_private->file_version);
-
-    if (save->_private->file_version > 15) {
-        return CG_UNSUPPORTED;
-    }
-
-    save->save_num = get_leu32_or_zero(stream);
-    err = get_le16_str(stream, &save->player_name);
-    if (err) return err;
-    save->level = get_leu32_or_zero(stream);
-    err = get_le16_str(stream, &save->player_location_name);
-    if (err) return err;
-    err = get_le16_str(stream, &save->game_time);
-    if (err) return err;
-    err = get_le16_str(stream, &save->race_id);
-    if (err) return err;
-    save->sex             = get_leu16_or_zero(stream);
-    save->current_xp      = get_le32_ieee754_or_zero(stream);
-    save->target_xp       = get_le32_ieee754_or_zero(stream);
-    save->filetime        = get_leu64_or_zero(stream);
-    save->snapshot_width  = get_leu32_or_zero(stream);
-    save->snapshot_height = get_leu32_or_zero(stream);
-
-    if (save->_private->file_version == 12) {
-        save->_private->compressor = get_leu16_or_zero(stream);
-    }
-
-    if (feof(stream) || ferror(stream)) {
-        return CG_EOF;
-    }
-
-    /*
-     * Read the snapshot.
-     */
-    if (save->_private->file_version >= 11u) {
-        save->snapshot_bytes_per_pixel = 4;
-    }
-    else {
-        save->snapshot_bytes_per_pixel = 3;
-    }
-
-    save->snapshot_size = save->snapshot_width * save->snapshot_height;
-    save->snapshot_size *= save->snapshot_bytes_per_pixel;
-    save->snapshot_data = malloc(save->snapshot_size);
-    if (!save->snapshot_data) {
-        return CG_NO_MEM;
-    }
-
-    DEBUG_LOG("0x%08lx: Reading %u bytes of snapshot data\n", ftell(stream), save->snapshot_size);
-
-    if (fread(save->snapshot_data, save->snapshot_size, 1, stream) != 1) {
-        return CG_EOF;
-    }
-
-    /*
-     * Depending on file version, the save data could be compressed.
-     * If the save file does not contain compression information, just keep
-     * reading from this stream. Otherwise, decompress the save data into a
-     * temporary stream and continue reading from there.
-     */
-    if (save->_private->file_version != 12u) {
-        DEBUG_LOG("Save file contains no compression information\n");
-        return read_save_data(stream, save);
-    }
-
-    /* Save file contains compression information. */
-    struct {
-        uint32_t size;
-        char    *data;
-    } uncompressed, compressed;
-    long start_of_save_data;
-    FILE *temp_stream;
-    int decompress_rc;
-
-    start_of_save_data = ftell(stream);
-    if (start_of_save_data == -1) {
-        perror("ftell");
-        return CG_FTELL;
-    }
-
-    /* Read compression related sizes. */
-    uncompressed.size = get_leu32_or_zero(stream);
-    compressed.size   = get_leu32_or_zero(stream);
-
-    if (feof(stream) || ferror(stream)) {
-        return CG_EOF;
-    }
-
-    DEBUG_LOG("Save data uncompressed length: %u\n", uncompressed.size);
-    DEBUG_LOG("Save data compressed length:   %u\n", compressed.size);
-
-    /* Allocate buffers for decompression. */
-    uncompressed.data = malloc(uncompressed.size);
-    compressed.data   = malloc(compressed.size);
-
-    if (!uncompressed.data || !compressed.data) {
-        free(uncompressed.data);
-        free(compressed.data);
-        return CG_NO_MEM;
-    }
-
-    if (fread(compressed.data, compressed.size, 1, stream) != 1) {
-        free(uncompressed.data);
-        free(compressed.data);
-        return CG_EOF;
-    }
-
-    /*
-     * Decompress save data.
-     */
-    DEBUG_LOG("Decompressing save data\n");
-
-    if (save->_private->compressor == NO_COMPRESSION) {
-        eprintf("No handler for uncompressed save data\n");
-        exit(1);
-    }
-    else if (save->_private->compressor == LZ4) {
-        decompress_rc = lz4_decompress(compressed.data, uncompressed.data, compressed.size, uncompressed.size);
-    }
-    else if (save->_private->compressor == ZLIB) {
-        decompress_rc = zlib_decompress(compressed.data, uncompressed.data, compressed.size, uncompressed.size);
-    }
-    else {
-        DEBUG_LOG("Unknown compression type: %u\n", save->_private->compressor);
-        free(uncompressed.data);
-        free(compressed.data);
-        return CG_UNSUPPORTED;
-    }
-
-    free(compressed.data);
-
-    if (decompress_rc == -1) {
-        eprintf("Decompression failed\n");
-        free(uncompressed.data);
-        return CG_CORRUPT;
-    }
-
-    DEBUG_LOG("Dumping decompressed save data\n");
-    DUMP_DATA("decompressed_save_data", uncompressed.data, uncompressed.size, start_of_save_data);
-
-    temp_stream = tmpfile();
-    if (!temp_stream) {
-        free(uncompressed.data);
-        return CG_TMPFILE;
-    }
-
-    if (fseek(temp_stream, start_of_save_data, SEEK_SET) == -1) {
-        fclose(temp_stream);
-        free(uncompressed.data);
-        perror("fseek");
-        return CG_FSEEK;
-    }
-
-    if (fwrite(uncompressed.data, uncompressed.size, 1, temp_stream) != 1) {
-        fclose(temp_stream);
-        free(uncompressed.data);
-        return CG_EOF;
-    }
-
-    free(uncompressed.data);
-
-    if (fseek(temp_stream, start_of_save_data, SEEK_SET) == -1) {
-        fclose(temp_stream);
-        perror("fseek");
-        return CG_FSEEK;
-    }
-
-    err = read_save_data(temp_stream, save);
-
-    (void) fclose(temp_stream);
-
-    return err;
-}
-
-struct savegame *cengine_savefile_read(const char *filename)
-{
-    struct savegame *save;
-    FILE *stream;
-    cg_err_t err;
-
-    save = calloc(1, sizeof(*save));
-    if (!save) {
-        perror("calloc");
-        return NULL;
-    }
-
-    DEBUG_LOG("Opening save file %s\n", filename);
-
-    stream = fopen(filename, "rb");
-    if (!stream) {
-        perror("fopen");
-        free(save);
-        return NULL;
-    }
-
-    DEBUG_LOG("Reading save file %s\n", filename);
-
-    err = read_savefile(stream, save);
-
-    switch (err) {
-    case CG_OK:
-        /* No error. */
-        break;
-    case CG_UNSUPPORTED:
-        eprintf("File cannot be read because its format is unsupported.\n");
-        break;
-    case CG_EOF:
-        if (feof(stream)) {
-            eprintf("File ended too soon. Is the save corrupt?\n");
-        }
-        else if(ferror(stream)) {
-            eprintf("File error occurred.\n");
-        }
-        else {
-            eprintf("bug: Neither EOF nor file error condition set, yet EOF was returned.\n");
-        }
-        break;
-    case CG_NO_MEM:
-        eprintf("Failed to allocate memory.\n");
-        break;
-    }
-
-    (void) fclose(stream);
-
-    if (err) {
-        DEBUG_LOG("Error %d occurred while reading save file\n", err);
-        savegame_free(save);
-        return NULL;
-    }
-
-    return save;
-}
-
 static void write_locations(FILE *restrict stream,
         const struct location_table *restrict table)
 {
@@ -1394,27 +1400,27 @@ static void write_chunk(FILE *restrict stream, const struct chunk *chunk)
     fwrite(chunk->data, chunk->length, 1, stream);
 }
 
-#define BEGIN_VARIABLE_LENGTH_BLOCK(stream)                                                             \
-{                                                                                                       \
-    put_le32(stream, 0);                                                                                \
-    long $block_start = ftell(stream);                                                                  \
+#define BEGIN_VARIABLE_LENGTH_BLOCK(stream)                                    \
+{                                                                              \
+    put_le32(stream, 0);                                                       \
+    long $block_start = ftell(stream);                                         \
     {
 
-#define END_VARIABLE_LENGTH_BLOCK(stream)                                                               \
-    }                                                                                                   \
-    long $block_end = ftell(stream);                                                                    \
-    long $block_len = $block_end - $block_start;                                                        \
-    fseek(stream, $block_start - sizeof(uint32_t), SEEK_SET);                                           \
-    put_le32(stream, $block_len);                                                                       \
-    fseek(stream, $block_end, SEEK_SET);                                                                \
+#define END_VARIABLE_LENGTH_BLOCK(stream)                                      \
+    }                                                                          \
+    long $block_end = ftell(stream);                                           \
+    long $block_len = $block_end - $block_start;                               \
+    fseek(stream, $block_start - sizeof(uint32_t), SEEK_SET);                  \
+    put_le32(stream, $block_len);                                              \
+    fseek(stream, $block_end, SEEK_SET);                                       \
 }
 
-#define WRITE_UNKNOWN_GLOBAL_DATA(stream, savegame, number) do {                                        \
-    put_le32((stream), number);                                                                         \
-    put_le32((stream), (savegame)->_private->global##number->length);                                   \
-    DEBUG_LOG("writing global data type %u at 0x%08lx\n", number, ftell(stream));                       \
-    write_chunk((stream), (savegame)->_private->global##number);                                        \
-} while (0)                                                                                             \
+#define WRITE_UNKNOWN_GLOBAL_DATA(stream, savegame, number) do {               \
+    put_le32((stream), number);                                                \
+    put_le32((stream), (savegame)->_private->global##number->length);          \
+    DEBUG_LOG("writing global data type %u at 0x%08lx\n", number, ftell(stream));  \
+    write_chunk((stream), (savegame)->_private->global##number);               \
+} while (0)                                                                    \
 
 /* Write types 0 to 8. */
 static int write_global_data_table1(FILE *restrict stream, const struct savegame *save)
@@ -1632,7 +1638,7 @@ static int write_global_data_table3(FILE *restrict stream, const struct savegame
     return num_objects;
 }
 
-static void serialise_change_form(FILE *restrict stream,
+static void write_change_form(FILE *restrict stream,
         const struct change_form *restrict cf)
 {
     put_ref_id(stream, cf->form_id);
@@ -1662,7 +1668,7 @@ static void serialise_change_form(FILE *restrict stream,
     fwrite(cf->data, cf->length1, 1, stream);
 }
 
-static int serialise_save_data(FILE *restrict stream, const struct savegame *save)
+static int write_save_data(FILE *restrict stream, const struct savegame *save)
 {
     struct location_table loc = {0};
     long location_table_offset;
@@ -1685,7 +1691,7 @@ static int serialise_save_data(FILE *restrict stream, const struct savegame *sav
         put_le16_str(stream, save->plugins[i]);
     }
 
-    if (has_light_plugins(save)) {
+    if (supports_light_plugins(save)) {
         put_le16(stream, save->num_light_plugins);
         for (uint32_t i = 0; i < save->num_light_plugins; ++i) {
             put_le16_str(stream, save->light_plugins[i]);
@@ -1716,7 +1722,7 @@ static int serialise_save_data(FILE *restrict stream, const struct savegame *sav
     loc.off_change_forms = ftell(stream);
     loc.num_change_forms = save->_private->num_change_forms;
     for (uint32_t i = 0; i < save->_private->num_change_forms; ++i) {
-        serialise_change_form(stream, &save->_private->change_forms[i]);
+        write_change_form(stream, &save->_private->change_forms[i]);
     }
 
     /*
@@ -1774,7 +1780,7 @@ static int serialise_save_data(FILE *restrict stream, const struct savegame *sav
     return CG_OK;
 }
 
-static int serialise_file(FILE *restrict stream, const struct savegame *save)
+static int write_save_file(FILE *restrict stream, const struct savegame *save)
 {
     cg_err_t err;
 
@@ -1808,7 +1814,7 @@ static int serialise_file(FILE *restrict stream, const struct savegame *save)
     put_le64(stream, save->filetime);
     put_le32(stream, save->snapshot_width);
     put_le32(stream, save->snapshot_height);
-    if (save->_private->file_version == 12) {
+    if (supports_save_file_compression(save)) {
         put_le16(stream, save->_private->compressor);
     }
     END_VARIABLE_LENGTH_BLOCK(stream)
@@ -1819,13 +1825,13 @@ static int serialise_file(FILE *restrict stream, const struct savegame *save)
     fwrite(save->snapshot_data, save->snapshot_size, 1, stream);
 
     /*
-     * Write the body of the save file. If the file version does not permit
+     * Write the body of the save file. If there is no support for save file
      * compression, continue writing to this stream directly. Otherwise, we'll
      * make a temporary stream and write the uncompressed data there. Then we'll
      * compress to the original stream.
      */
-    if (save->_private->file_version != 12) {
-        return serialise_save_data(stream, save);
+    if (!supports_save_file_compression(save)) {
+        return write_save_data(stream, save);
     }
 
     struct {
@@ -1864,7 +1870,7 @@ static int serialise_file(FILE *restrict stream, const struct savegame *save)
     }
 
     /* Write uncompressed save data. */
-    err = serialise_save_data(temp_stream, save);
+    err = write_save_data(temp_stream, save);
 
     if (err) {
         fclose(temp_stream);
@@ -1912,7 +1918,7 @@ static int serialise_file(FILE *restrict stream, const struct savegame *save)
         return CG_EOF;
     }
 
-    DUMP_DATA("uncompressed_save_data_w", uncompressed.data, uncompressed.size, start_of_save_data);
+    dump_to_file("uncompressed_save_data_w", uncompressed.data, uncompressed.size, start_of_save_data);
 
     (void) fclose(temp_stream);
 
@@ -1973,7 +1979,7 @@ int cengine_savefile_write(const char *filename, const struct savegame *savegame
         return -1;
     }
 
-    err = serialise_file(stream, savegame);
+    err = write_save_file(stream, savegame);
 
     if (fclose(stream) == EOF) {
         perror("fclose");
@@ -2073,45 +2079,45 @@ static void free_savefile_private(struct savegame_private *private)
 
 void savegame_free(struct savegame *save)
 {
-	unsigned i;
+    unsigned i;
 
-	free(save->player_name);
-	free(save->player_location_name);
-	free(save->game_time);
-	free(save->race_id);
-	free(save->snapshot_data);
-	free(save->game_version);
+    free(save->player_name);
+    free(save->player_location_name);
+    free(save->game_time);
+    free(save->race_id);
+    free(save->snapshot_data);
+    free(save->game_version);
 
-	if (save->plugins) {
-		for (i = 0u; i < save->num_plugins; ++i) {
-			free(save->plugins[i]);
-		}
+    if (save->plugins) {
+        for (i = 0u; i < save->num_plugins; ++i) {
+            free(save->plugins[i]);
+        }
 
-		free(save->plugins);
-	}
+        free(save->plugins);
+    }
 
-	if (save->light_plugins) {
-		for (i = 0u; i < save->num_light_plugins; ++i) {
-			free(save->light_plugins[i]);
-		}
+    if (save->light_plugins) {
+        for (i = 0u; i < save->num_light_plugins; ++i) {
+            free(save->light_plugins[i]);
+        }
 
-		free(save->light_plugins);
-	}
+        free(save->light_plugins);
+    }
 
-	if (save->misc_stats) {
-		for (i = 0; i < save->num_misc_stats; ++i) {
-			free(save->misc_stats[i].name);
-		}
+    if (save->misc_stats) {
+        for (i = 0; i < save->num_misc_stats; ++i) {
+            free(save->misc_stats[i].name);
+        }
 
-		free(save->misc_stats);
-	}
+        free(save->misc_stats);
+    }
 
-	free(save->global_vars);
-	free(save->weather.data4);
-	free(save->favourites);
-	free(save->hotkeys);
-	free(save->form_ids);
-	free(save->world_spaces);
-	free_savefile_private(save->_private);
-	free(save);
+    free(save->global_vars);
+    free(save->weather.data4);
+    free(save->favourites);
+    free(save->hotkeys);
+    free(save->form_ids);
+    free(save->world_spaces);
+    free_savefile_private(save->_private);
+    free(save);
 }

@@ -24,9 +24,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdlib.h>
 
-#define FREE_AND_NULL(p) do {										\
-	free(p);														\
-	(p) = NULL;														\
+#define FREE_AND_NULL(p) do {                                        \
+    free(p);                                                        \
+    (p) = NULL;                                                        \
 } while(0)
 
 void *memdup(const void *ptr, size_t size);

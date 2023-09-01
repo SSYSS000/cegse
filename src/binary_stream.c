@@ -69,8 +69,8 @@ uint32_t get_beu24_or_zero(FILE *stream)
 {
     /* FIXME: some calls may succeed while others fail. */
     return (uint32_t) get_u8_or_zero(stream) << 16 |
-        (uint32_t) get_u8_or_zero(stream) << 8 |
-        (uint32_t) get_u8_or_zero(stream);
+           (uint32_t) get_u8_or_zero(stream) << 8 |
+           (uint32_t) get_u8_or_zero(stream);
 }
 
 int put_le32_ieee754(FILE* stream, float value)
@@ -132,7 +132,7 @@ uint##bits##_t get_leu##bits##_or_zero(FILE *stream)                        \
     return le##bits##toh(value);                                            \
 }                                                                           \
                                                                             \
-int##bits##_t get_lei##bits##_or_zero(FILE *stream)               \
+int##bits##_t get_lei##bits##_or_zero(FILE *stream)                         \
 {                                                                           \
     int##bits##_t s;                                                        \
     uint##bits##_t u = get_leu##bits##_or_zero(stream);                     \

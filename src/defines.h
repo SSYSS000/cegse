@@ -34,8 +34,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define eprintf(...)        fprintf(stderr, __VA_ARGS__)
 
 #if !defined(NDEBUG)
-# define BUG(message) do {                                                          \
-                                                                                    \
+# define BUG(message) do {                                                     \
+                                                                               \
 } while (0)
 #else
 # define BUG(...) (void) 0
