@@ -224,6 +224,12 @@ struct change_form {
     unsigned char *data;
 };
 
+enum compressor {
+    NO_COMPRESSION,
+    ZLIB,
+    LZ4,
+};
+
 struct savegame_private {
     /*
      * Skyrim LE: 7,8,9
@@ -233,7 +239,8 @@ struct savegame_private {
     uint32_t file_version;
     uint8_t  form_version;
 
-    uint16_t compressor;    /* the original savefile compression algorithm. */
+    /* the original savefile compression algorithm. */
+    enum compressor compressor;
 
     /* Unknown global data structures. */
     struct chunk *global2;
@@ -281,12 +288,6 @@ struct location_table {
     uint32_t num_globals2;
     uint32_t num_globals3;
     uint32_t num_change_forms;
-};
-
-enum compressor {
-    NO_COMPRESSION,
-    ZLIB,
-    LZ4,
 };
 
 static void print_locations_table(const struct location_table *t)
@@ -1043,13 +1044,26 @@ static cg_err_t read_savefile(FILE *stream, struct savegame *save)
     save->snapshot_height = get_leu32_or_zero(stream);
 
     if (supports_save_file_compression(save)) {
-        save->_private->compressor = get_leu16_or_zero(stream);
+        /*
+         * Read compression type and validate it.
+         */
+        uint16_t compression_type;
+
+        if (!get_leu16(stream, &compression_type)) {
+            return CG_EOF;
+        }
+
+        /* Validate. */
+        if (!(0 <= compression_type && compression_type <= 2)) {
+            DEBUG_LOG("Read an invalid compression type: %u \n", compression_type);
+            return CG_CORRUPT;
+        }
+
+        save->_private->compressor = compression_type;
 
         DEBUG_LOG("Save file compression algorithm = %s.\n",
-                  save->_private->compressor == LZ4 ? "lz4" :
-                  save->_private->compressor == ZLIB ? "zlib" :
-                  save->_private->compressor == NO_COMPRESSION ? "none" :
-                  "unknown");
+            compression_type == LZ4 ? "lz4" :
+            compression_type == ZLIB ? "zlib" : "none");
     }
     else {
         DEBUG_LOG("No save file compression support\n");
@@ -1140,21 +1154,22 @@ static cg_err_t read_savefile(FILE *stream, struct savegame *save)
      */
     DEBUG_LOG("Decompressing save data\n");
 
-    if (save->_private->compressor == NO_COMPRESSION) {
+    switch (save->_private->compressor) {
+    case NO_COMPRESSION:
         eprintf("No handler for uncompressed save data\n");
         exit(1);
-    }
-    else if (save->_private->compressor == LZ4) {
+
+    case LZ4:
         decompress_rc = lz4_decompress(compressed.data, uncompressed.data, compressed.size, uncompressed.size);
-    }
-    else if (save->_private->compressor == ZLIB) {
+        break;
+
+    case ZLIB:
         decompress_rc = zlib_decompress(compressed.data, uncompressed.data, compressed.size, uncompressed.size);
-    }
-    else {
-        DEBUG_LOG("Unknown compression type: %u\n", save->_private->compressor);
-        free(uncompressed.data);
-        free(compressed.data);
-        return CG_UNSUPPORTED;
+        break;
+
+    default:
+        BUG("invalid compressor");
+        abort();
     }
 
     free(compressed.data);
@@ -1932,16 +1947,27 @@ static int write_save_file(FILE *restrict stream, const struct savegame *save)
      * Compress.
      */
     switch (save->_private->compressor) {
+    case NO_COMPRESSION:
+        /* Swap compressed.data and uncompressed.data */
+        char *temp_ptr    = compressed.data;
+        compressed.data   = uncompressed.data;
+        uncompressed.data = temp_ptr;
+        compress_rc       = uncompressed.size;
+        break;
+
     case LZ4:
-        compress_rc = lz4_compress(uncompressed.data, compressed.data, uncompressed.size, compressed.size);
+        compress_rc = lz4_compress(uncompressed.data, compressed.data,
+                                   uncompressed.size, compressed.size);
         break;
 
     case ZLIB:
-        compress_rc = zlib_compress(uncompressed.data, compressed.data, uncompressed.size, compressed.size);
+        compress_rc = zlib_compress(uncompressed.data, compressed.data,
+                                    uncompressed.size, compressed.size);
         break;
 
-    case NO_COMPRESSION:
-        break;
+    default:
+        BUG("invalid compressor");
+        abort();
     }
 
     free(uncompressed.data);
