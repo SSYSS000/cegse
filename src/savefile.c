@@ -316,6 +316,10 @@ static bool supports_light_plugins(const struct savegame *save)
 
     case FALLOUT4:
         return save->_private->file_version >= 12;
+
+    default:
+        BUG("invalid game");
+        abort();
     }
 }
 
