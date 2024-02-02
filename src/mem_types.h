@@ -19,8 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef MEM_TYPES_H
 #define MEM_TYPES_H
 
-#include <stdio.h>
-#include <string.h>
+#include <stddef.h>
 
 /*
  * A chunk of memory, prefixed by its size.
@@ -68,32 +67,6 @@ static inline struct cregion make_cregion(const void *data, size_t size)
         .size = size,
         .data = data
     };
-}
-
-/*
- * Make a cregion from a region.
- * This adds the const qualifier to the data pointer.
- */
-static inline struct cregion cregion_from_region(struct region r)
-{
-    return make_cregion(r.data, r.size);
-}
-
-/*
- * Make a region from a cregion.
- * This discards the const qualifier of the data pointer.
- */
-static inline struct region region_from_cregion(struct cregion r)
-{
-    return make_region((void *)r.data, r.size);
-}
-
-/*
- * Make a region from a nonnull chunk.
- */
-static inline struct region region_from_chunk(struct chunk *c)
-{
-    return make_region(c->data, c->size);
 }
 
 /*
