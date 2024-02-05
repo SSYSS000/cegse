@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2022  SSYSS000
+Copyright (C) 2024  SSYSS000
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -20,6 +20,90 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdio.h>
 #include <stdint.h>
+
+struct cursor {
+    char *pos;
+
+    /* 
+     * When n > 0, n denotes the distance to the end from the current
+     * position pos.
+     * 
+     * When n == 0, the position points to the end.
+     *
+     * When n < 0, the cursor is out of bounds and n denotes how many bytes
+     * would have been read/written past the end but as a negative number.
+     * Position may not point at the end. This state will be reached when trying
+     * to read/write more bytes than available at some position. This value
+     * is useful in error checking and tells for example by how
+     * much to grow a buffer.
+     */
+    long long n;
+};
+
+/* Pointer to buffer API */
+void store_u8(char *dest, uint8_t value);
+void store_le16(char *dest, uint16_t value);
+void store_be24(char *dest, uint32_t value);
+void store_le32(char *dest, uint32_t value);
+void store_le64(char *dest, uint64_t value);
+void store_lef32(char *dest, float value);
+
+uint8_t load_u8(const char *src);
+uint16_t load_le16(const char *src);
+uint32_t load_be24(const char *src);
+uint32_t load_le32(const char *src);
+uint64_t load_le64(const char *src);
+float load_lef32(const char *src);
+
+/* Cursor API */
+/*
+ * Advance this cursor by n bytes. Equivalent to c_advance2(c, c, n).
+ */
+static inline void c_advance(struct cursor *c, long long n)
+{
+    c->pos += n;
+    c->n -= n;
+}
+
+/*
+ * Advance 'from' cursor by n bytes, storing the result to the 'to' cursor.
+ */
+void c_advance2(struct cursor *to, const struct cursor *from, long long n);
+
+/*
+ * These functions store a value at the current position and advance the
+ * position. The operation fails if cursor goes out of bounds.
+ */
+void c_store_bytes(struct cursor *cursor, const void *bytes, size_t n);
+void c_store_u8(struct cursor *c, uint8_t value);
+void c_store_le16(struct cursor *c, uint16_t value);
+void c_store_be24(struct cursor *c, uint32_t value);
+void c_store_le32(struct cursor *c, uint32_t value);
+void c_store_le64(struct cursor *c, uint64_t value);
+void c_store_lef32(struct cursor *c, float value);
+
+/* 
+ * These functions load a value from the current position to dest.
+ * On success, return nonzero value.
+ */
+int c_load_bytes(struct cursor *cursor, void *dest, size_t n);
+int c_load_u8(struct cursor *cursor, uint8_t *dest);
+int c_load_le16(struct cursor *cursor, uint16_t *dest);
+int c_load_be24(struct cursor *cursor, uint32_t *dest);
+int c_load_le32(struct cursor *cursor, uint32_t *dest);
+int c_load_le64(struct cursor *cursor, uint64_t *dest);
+int c_load_lef32(struct cursor *cursor, float *dest);
+
+/*
+ * These functions load a value from the current position and return it.
+ * On out of bounds error, return 0.
+ */
+uint8_t c_load_u8_or0(struct cursor *cursor);
+uint16_t c_load_le16_or0(struct cursor *cursor);
+uint32_t c_load_be24_or0(struct cursor *cursor);
+uint32_t c_load_le32_or0(struct cursor *cursor);
+uint64_t c_load_le64_or0(struct cursor *cursor);
+float c_load_lef32_or0(struct cursor *cursor);
 
 static inline size_t
 write_bytes(FILE *restrict stream, const void *restrict bytes, size_t n)
@@ -44,7 +128,7 @@ size_t put_le16(FILE *stream, uint16_t value);
 size_t put_le32(FILE *stream, uint32_t value);
 size_t put_le64(FILE *stream, uint64_t value);
 size_t put_be24(FILE *stream, uint32_t value);
-size_t put_le32_ieee754(FILE *stream, float value);
+size_t put_lef32(FILE *stream, float value);
 
 size_t
 read_le16_array(FILE *restrict stream, uint16_t *restrict out, size_t n);
@@ -52,19 +136,22 @@ size_t
 read_le32_array(FILE *restrict stream, uint32_t *restrict out, size_t n);
 size_t
 read_le64_array(FILE *restrict stream, uint64_t *restrict out, size_t n);
-size_t get_u8(FILE *restrict stream, uint8_t *restrict out);
-size_t get_le16(FILE *restrict stream, uint16_t *restrict out);
-size_t get_le32(FILE *restrict stream, uint32_t *restrict out);
-size_t get_le64(FILE *restrict stream, uint64_t *restrict out);
-uint8_t get_u8_or_zero(FILE *stream);
-uint16_t get_le16_or_zero(FILE *stream);
-uint32_t get_le32_or_zero(FILE *stream);
-uint64_t get_le64_or_zero(FILE *stream);
-uint32_t get_beu24_or_zero(FILE *stream);
 
-size_t write_le32_ieee754_array(FILE *stream, float *array, size_t n);
-size_t read_le32_ieee754_array(FILE *stream, float *array, size_t n);
-size_t get_le32_ieee754(FILE *stream, float *out);
-float get_le32_ieee754_or_zero(FILE *stream);
+int get_u8(FILE *restrict stream, uint8_t *restrict out);
+int get_le16(FILE *restrict stream, uint16_t *restrict out);
+int get_be24(FILE *restrict stream, uint32_t *restrict out);
+int get_le32(FILE *restrict stream, uint32_t *restrict out);
+int get_le64(FILE *restrict stream, uint64_t *restrict out);
+int get_lef32(FILE *stream, float *out);
+
+uint8_t get_u8_or0(FILE *stream);
+uint16_t get_le16_or0(FILE *stream);
+uint32_t get_be24_or0(FILE *stream);
+uint32_t get_le32_or0(FILE *stream);
+uint64_t get_le64_or0(FILE *stream);
+float get_lef32_or0(FILE *stream);
+
+size_t write_lef32_array(FILE *stream, float *array, size_t n);
+size_t read_lef32_array(FILE *stream, float *array, size_t n);
 
 #endif /* CEGSE_BINARY_STREAM_H */

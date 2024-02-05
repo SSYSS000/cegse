@@ -35,7 +35,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 
 #define put_ref_id               put_be24
-#define get_ref_id               get_beu24_or_zero
+#define get_ref_id               get_be24_or0
 
 #define TESV_SIGNATURE           "TESV_SAVEGAME"
 #define FO4_SIGNATURE            "FO4_SAVEGAME"
@@ -540,22 +540,22 @@ static cg_err_t read_global_data(FILE *stream, struct savegame *save)
                 break;
             }
 
-            save->misc_stats[i].category = get_u8_or_zero(stream);
-            save->misc_stats[i].value    = get_le32_or_zero(stream);
+            save->misc_stats[i].category = get_u8_or0(stream);
+            save->misc_stats[i].value    = get_le32_or0(stream);
         }
         break;
 
     case 1: /* Player location */
-        save->player_location.next_object_id = get_le32_or_zero(stream);
+        save->player_location.next_object_id = get_le32_or0(stream);
         save->player_location.world_space1   = get_ref_id(stream);
-        save->player_location.coord_x        = (int32_t)get_le32_or_zero(stream);
-        save->player_location.coord_y        = (int32_t)get_le32_or_zero(stream);
+        save->player_location.coord_x        = (int32_t)get_le32_or0(stream);
+        save->player_location.coord_y        = (int32_t)get_le32_or0(stream);
         save->player_location.world_space2   = get_ref_id(stream);
-        save->player_location.pos_x          = get_le32_ieee754_or_zero(stream);
-        save->player_location.pos_y          = get_le32_ieee754_or_zero(stream);
-        save->player_location.pos_z          = get_le32_ieee754_or_zero(stream);
+        save->player_location.pos_x          = get_lef32_or0(stream);
+        save->player_location.pos_y          = get_lef32_or0(stream);
+        save->player_location.pos_z          = get_lef32_or0(stream);
         if (save->game == SKYRIM) {
-            save->player_location.unknown    = get_u8_or_zero(stream); /* Skyrim only */
+            save->player_location.unknown    = get_u8_or0(stream); /* Skyrim only */
         }
         break;
 
@@ -573,7 +573,7 @@ static cg_err_t read_global_data(FILE *stream, struct savegame *save)
 
         for (uint32_t i = 0u; i < save->num_global_vars; ++i) {
             save->global_vars[i].form_id = get_ref_id(stream);
-            save->global_vars[i].value   = get_le32_ieee754_or_zero(stream);
+            save->global_vars[i].value   = get_lef32_or0(stream);
         }
         break;
 
@@ -584,14 +584,14 @@ static cg_err_t read_global_data(FILE *stream, struct savegame *save)
         save->weather.unk_weather1 = get_ref_id(stream);
         save->weather.unk_weather2 = get_ref_id(stream);
         save->weather.regn_weather = get_ref_id(stream);
-        save->weather.current_time = get_le32_ieee754_or_zero(stream);
-        save->weather.begin_time   = get_le32_ieee754_or_zero(stream);
-        save->weather.weather_pct  = get_le32_ieee754_or_zero(stream);
+        save->weather.current_time = get_lef32_or0(stream);
+        save->weather.begin_time   = get_lef32_or0(stream);
+        save->weather.weather_pct  = get_lef32_or0(stream);
         for (size_t i = 0u; i < 6; ++i)
-            save->weather.data1[i] = get_le32_or_zero(stream);
-        save->weather.data2        = get_le32_ieee754_or_zero(stream);
-        save->weather.data3        = get_le32_or_zero(stream);
-        save->weather.flags        = get_u8_or_zero(stream);
+            save->weather.data1[i] = get_le32_or0(stream);
+        save->weather.data2        = get_lef32_or0(stream);
+        save->weather.data3        = get_le32_or0(stream);
+        save->weather.flags        = get_u8_or0(stream);
 
         if (feof(stream) || ferror(stream)) {
             err = CG_EOF;
@@ -735,9 +735,9 @@ static cg_err_t read_change_form(FILE *restrict stream, struct change_form *rest
     memset(cf, 0, sizeof(*cf));
 
     cf->form_id = get_ref_id(stream);
-    cf->flags   = get_le32_or_zero(stream);
-    cf->type    = get_u8_or_zero(stream);
-    cf->version = get_u8_or_zero(stream);
+    cf->flags   = get_le32_or0(stream);
+    cf->type    = get_u8_or0(stream);
+    cf->version = get_u8_or0(stream);
 
     if (feof(stream) || ferror(stream)) {
         return CG_EOF;
@@ -747,16 +747,16 @@ static cg_err_t read_change_form(FILE *restrict stream, struct change_form *rest
     /* Two upper bits of type determine the sizes of length1 and length2. */
     switch ((cf->type >> 6) & 0x3) {
     case 0:
-        cf->length1 = get_u8_or_zero(stream);
-        cf->length2 = get_u8_or_zero(stream);
+        cf->length1 = get_u8_or0(stream);
+        cf->length2 = get_u8_or0(stream);
         break;
     case 1:
-        cf->length1 = get_le16_or_zero(stream);
-        cf->length2 = get_le16_or_zero(stream);
+        cf->length1 = get_le16_or0(stream);
+        cf->length2 = get_le16_or0(stream);
         break;
     case 2:
-        cf->length1 = get_le32_or_zero(stream);
-        cf->length2 = get_le32_or_zero(stream);
+        cf->length1 = get_le32_or0(stream);
+        cf->length2 = get_le32_or0(stream);
         break;
     default:
         /* 
@@ -907,22 +907,22 @@ static cg_err_t read_savefile(FILE *stream, struct savegame *save)
         return CG_UNSUPPORTED;
     }
 
-    save->save_num = get_le32_or_zero(stream);
+    save->save_num = get_le32_or0(stream);
     err = get_le16_str(stream, &save->player_name);
     if (err) return err;
-    save->level = get_le32_or_zero(stream);
+    save->level = get_le32_or0(stream);
     err = get_le16_str(stream, &save->player_location_name);
     if (err) return err;
     err = get_le16_str(stream, &save->game_time);
     if (err) return err;
     err = get_le16_str(stream, &save->race_id);
     if (err) return err;
-    save->sex             = get_le16_or_zero(stream);
-    save->current_xp      = get_le32_ieee754_or_zero(stream);
-    save->target_xp       = get_le32_ieee754_or_zero(stream);
-    save->filetime        = get_le64_or_zero(stream);
-    save->snapshot_width  = get_le32_or_zero(stream);
-    save->snapshot_height = get_le32_or_zero(stream);
+    save->sex             = get_le16_or0(stream);
+    save->current_xp      = get_lef32_or0(stream);
+    save->target_xp       = get_lef32_or0(stream);
+    save->filetime        = get_le64_or0(stream);
+    save->snapshot_width  = get_le32_or0(stream);
+    save->snapshot_height = get_le32_or0(stream);
 
     if (supports_save_file_compression(save)) {
         /*
@@ -1131,7 +1131,7 @@ static cg_err_t read_save_data(FILE *stream, struct savegame *save)
      * Length of plugin information: size of plugin count, plugin strings,
      * light plugin count and light plugin string.
      */
-    (void) get_le32_or_zero(stream);
+    (void) get_le32_or0(stream);
 
     if (!get_u8(stream, &save->num_plugins)) {
         return CG_EOF;
@@ -1179,16 +1179,16 @@ static cg_err_t read_save_data(FILE *stream, struct savegame *save)
      */
     DEBUG_LOG("0x%08lx: Reading locations table\n", ftell(stream));
 
-    loc.off_form_ids_count = get_le32_or_zero(stream);
-    loc.off_unknown_table  = get_le32_or_zero(stream);
-    loc.off_globals1       = get_le32_or_zero(stream);
-    loc.off_globals2       = get_le32_or_zero(stream);
-    loc.off_change_forms   = get_le32_or_zero(stream);
-    loc.off_globals3       = get_le32_or_zero(stream);
-    loc.num_globals1       = get_le32_or_zero(stream);
-    loc.num_globals2       = get_le32_or_zero(stream);
-    loc.num_globals3       = get_le32_or_zero(stream);
-    loc.num_change_forms   = get_le32_or_zero(stream);
+    loc.off_form_ids_count = get_le32_or0(stream);
+    loc.off_unknown_table  = get_le32_or0(stream);
+    loc.off_globals1       = get_le32_or0(stream);
+    loc.off_globals2       = get_le32_or0(stream);
+    loc.off_change_forms   = get_le32_or0(stream);
+    loc.off_globals3       = get_le32_or0(stream);
+    loc.num_globals1       = get_le32_or0(stream);
+    loc.num_globals2       = get_le32_or0(stream);
+    loc.num_globals3       = get_le32_or0(stream);
+    loc.num_change_forms   = get_le32_or0(stream);
 
     save->priv->n_change_forms = loc.num_change_forms;
 
@@ -1381,9 +1381,9 @@ static int write_global_data_table1(FILE *restrict stream, const struct savegame
     put_le32(stream, save->player_location.coord_x);
     put_le32(stream, save->player_location.coord_y);
     put_ref_id(stream, save->player_location.world_space2);
-    put_le32_ieee754(stream, save->player_location.pos_x);
-    put_le32_ieee754(stream, save->player_location.pos_y);
-    put_le32_ieee754(stream, save->player_location.pos_z);
+    put_lef32(stream, save->player_location.pos_x);
+    put_lef32(stream, save->player_location.pos_y);
+    put_lef32(stream, save->player_location.pos_z);
     put_u8(stream, save->player_location.unknown); /* Present in Skyrim savefiles. */
     END_VARIABLE_LENGTH_BLOCK(stream)
     num_objects++;
@@ -1398,7 +1398,7 @@ static int write_global_data_table1(FILE *restrict stream, const struct savegame
     encode_vsval(stream, save->num_global_vars);
     for (uint32_t i = 0u; i < save->num_global_vars; ++i) {
         put_ref_id(stream, save->global_vars[i].form_id);
-        put_le32_ieee754(stream, save->global_vars[i].value);
+        put_lef32(stream, save->global_vars[i].value);
     }
     END_VARIABLE_LENGTH_BLOCK(stream)
     num_objects++;
@@ -1417,12 +1417,12 @@ static int write_global_data_table1(FILE *restrict stream, const struct savegame
     put_ref_id(stream, save->weather.unk_weather1);
     put_ref_id(stream, save->weather.unk_weather2);
     put_ref_id(stream, save->weather.regn_weather);
-    put_le32_ieee754(stream, save->weather.current_time);
-    put_le32_ieee754(stream, save->weather.begin_time);
-    put_le32_ieee754(stream, save->weather.weather_pct);
+    put_lef32(stream, save->weather.current_time);
+    put_lef32(stream, save->weather.begin_time);
+    put_lef32(stream, save->weather.weather_pct);
     for (size_t i = 0u; i < 6; ++i)
         put_le32(stream, save->weather.data1[i]);
-    put_le32_ieee754(stream, save->weather.data2);
+    put_lef32(stream, save->weather.data2);
     put_le32(stream, save->weather.data3);
     put_u8(stream, save->weather.flags);
     write_bytes(stream, save->weather.data4, save->weather.data4_sz);
@@ -1664,8 +1664,8 @@ static int write_save_file(FILE *restrict stream, const struct savegame *save)
     put_le16_str(stream, save->game_time);
     put_le16_str(stream, save->race_id);
     put_le16(stream, save->sex);
-    put_le32_ieee754(stream, save->current_xp);
-    put_le32_ieee754(stream, save->target_xp);
+    put_lef32(stream, save->current_xp);
+    put_lef32(stream, save->target_xp);
     put_le64(stream, save->filetime);
     put_le32(stream, save->snapshot_width);
     put_le32(stream, save->snapshot_height);
