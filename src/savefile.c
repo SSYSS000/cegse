@@ -15,12 +15,17 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
+#define _GNU_SOURCE
 #include <assert.h>
 #include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 
 #include "binary_stream.h"
 #include "compression.h"
@@ -29,13 +34,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "savefile.h"
 #include "log.h"
 
+#define FOR_REGION_CASTS(DO)                            \
+    DO(struct block *, block_as_region)
+
+#define FOR_CREGION_CASTS(DO)                           \
+    DO(struct block *, const_block_as_cregion)
+
 #include "mem_type_casts.h"
 
 #define perror(str)              eprintf("%s:%d: %s: %s\n", __FILE__, __LINE__, str, strerror(errno))
-
-
-#define put_ref_id               put_be24
-#define get_ref_id               get_be24_or0
 
 #define TESV_SIGNATURE           "TESV_SAVEGAME"
 #define FO4_SIGNATURE            "FO4_SAVEGAME"
@@ -58,6 +65,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define REF_IS_CREATED(ref_id)    (REF_TYPE(ref_id) == 2u)
 #define REF_IS_UNKNOWN(ref_id)    (REF_TYPE(ref_id) == 3u)
 
+#define LOCATION_TABLE_SIZE       100u
+
 #define VSVAL_MAX                 4194303u
 
 typedef enum cg_err {
@@ -65,11 +74,66 @@ typedef enum cg_err {
     CG_UNSUPPORTED,
     CG_EOF,
     CG_NO_MEM,
-    CG_FSEEK,
-    CG_FTELL,
-    CG_TMPFILE,
-    CG_CORRUPT
+    CG_CORRUPT,
+    CG_INVAL,
+    CG_COMPRESS,
+    CG_NOT_PRESENT
 } cg_err_t;
+
+enum object_type {
+    OBJECT_FILE_HEADER,
+    OBJECT_PLUGIN_INFO,
+
+    /* Table 1 (0 - 11) */
+#define FIRST_OBJECT_GLDA              OBJECT_GLDA_MISC_STATS
+#define FIRST_TABLE1_OBJECT_GLDA       OBJECT_GLDA_MISC_STATS
+    OBJECT_GLDA_MISC_STATS,
+    OBJECT_GLDA_PLAYER_LOCATION,
+    OBJECT_GLDA_GAME,
+    OBJECT_GLDA_GLOBAL_VARIABLES,
+    OBJECT_GLDA_CREATED_OBJECTS,
+    OBJECT_GLDA_EFFECTS,
+    OBJECT_GLDA_WEATHER,
+    OBJECT_GLDA_AUDIO,
+    OBJECT_GLDA_SKY_CELLS,
+    OBJECT_GLDA_9,
+    OBJECT_GLDA_10,
+    OBJECT_GLDA_11,
+    /* Table 2 (100 - 117) */
+#define FIRST_TABLE2_OBJECT_GLDA       OBJECT_GLDA_PROCESS_LISTS
+    OBJECT_GLDA_PROCESS_LISTS,
+    OBJECT_GLDA_COMBAT,
+    OBJECT_GLDA_INTERFACE,
+    OBJECT_GLDA_ACTOR_CAUSES,
+    OBJECT_GLDA_104,
+    OBJECT_GLDA_DETECTION_MANAGER,
+    OBJECT_GLDA_LOCATION_METADATA,
+    OBJECT_GLDA_QUEST_STATIC_DATA,
+    OBJECT_GLDA_STORYTELLER,
+    OBJECT_GLDA_MAGIC_FAVORITES,
+    OBJECT_GLDA_PLAYER_CONTROLS,
+    OBJECT_GLDA_STORY_EVENT_MANAGER,
+    OBJECT_GLDA_INGREDIENT_SHARED,
+    OBJECT_GLDA_MENU_CONTROLS,
+    OBJECT_GLDA_MENU_TOPIC_MANAGER,
+    OBJECT_GLDA_115,
+    OBJECT_GLDA_116,
+    OBJECT_GLDA_117,
+    /* Table 3 (1000 - 1007) */
+#define FIRST_TABLE3_OBJECT_GLDA        OBJECT_GLDA_TEMP_EFFECTS
+    OBJECT_GLDA_TEMP_EFFECTS,
+    OBJECT_GLDA_PAPYRUS,
+    OBJECT_GLDA_ANIM_OBJECTS,
+    OBJECT_GLDA_TIMER,
+    OBJECT_GLDA_SYNCHRONISED_ANIMS,
+    OBJECT_GLDA_MAIN,
+    OBJECT_GLDA_1006,
+    OBJECT_GLDA_1007,
+#define LAST_OBJECT_GLDA             OBJECT_GLDA_1007
+#define OBJECT_GLDA_TYPE_COUNT       (LAST_OBJECT_GLDA - FIRST_OBJECT_GLDA + 1)
+
+    OBJECT_TYPE_COUNT
+};
 
 enum change_form_type {
     CHANGE_REFR,
@@ -239,10 +303,7 @@ struct psavegame {
 
     unsigned n_change_forms;
 
-    struct chunk *globals1[9];     /* Global data table 1. */
-    struct chunk *globals2[15];    /* Global data table 2. */
-    struct chunk *globals3[6];     /* Global data table 3. */
-
+    struct chunk *globals[OBJECT_GLDA_TYPE_COUNT];
     struct change_form *change_forms;
     struct chunk *unknown3; /* Data at the end of the savefile. */
 };
@@ -261,17 +322,129 @@ struct location_table {
     uint32_t num_change_forms;
 };
 
+enum block_type {
+    /* Assembler adds block size (32-bit LE) only. */
+    BLOCK_SIMPLE,
+
+    /* Assembler adds global data type number. */
+    BLOCK_GLOBAL_DATA,
+
+    /* Assembler adds change form meta data. */
+    BLOCK_CHANGE_FORM,
+};
+
+/*
+ * Blocks always points to a location in a buffer where
+ * an object is serialized to or deserialized from. NOT to the block header.
+ *
+ * When neither body nor block is not compressed, buffer points to file.
+ * block ---->   file
+ *       write   write header
+ *
+ * When only body is compressed, buffer points to body buffer.
+ * block ----> buffer A    ->          file
+ *       write           compress      write header
+ *
+ * When only block is compressed, buffer points to allocated buffer for block
+ * and compress buffer points to file.
+ *
+ * block ----> buffer A    ->         file
+ *        write           compress    write header
+ *
+ * When both are compressed:
+ *
+ * block ---->   buffer B   ->         buffer A        ->           file
+ *        write           compress     write header  compress
+ *
+ */
+struct block {
+    /* Points to data, compressed or not.  */
+    char *buffer;
+
+    /* Buffer capacity. */
+    unsigned buffer_size;
+
+    /* The size of the data that buffer points to. */
+    unsigned size;
+
+    /* 
+     * Only if >0, buffer points to compressed data and this denotes
+     * the uncompressed size of the data.
+     */
+    uint32_t uncompressed_size;
+
+    enum block_type block_type;
+};
+
+struct block_global_data {
+    struct block base;
+    uint32_t type_num;
+};
+
+struct block_change_form {
+    struct block base;
+    ref_t form_id;
+    uint32_t flags;
+    uint32_t type_num;
+    uint32_t version;
+};
+
+static struct savegame *savegame_alloc(void);
+
+static inline struct region block_as_region(struct block *block)
+{
+    return make_region(block->buffer, block->size);
+}
+
+static inline struct cregion const_block_as_cregion(const struct block *block)
+{
+    return make_cregion(block->buffer, block->size);
+}
+
+static cg_err_t file_writer(char *file, size_t *file_size_ptr, const struct savegame *save);
+static cg_err_t file_reader(const char *file, size_t file_size, struct savegame *save);
+
+static cg_err_t serializer(struct block *, const struct savegame *, enum object_type);
+static cg_err_t deserializer(struct block *, struct savegame *, enum object_type);
+
+/*
+ * Compresses block buffer data to a new location _buffer_ and updates the
+ * pointer and the size values accordingly. Block buffer will be set to point
+ * to the new location.
+ */
+static cg_err_t compressor(struct block *, void *buffer, size_t buffer_size, enum compressor);
+static cg_err_t decompressor(struct block *, void *buffer, size_t buffer_size, enum compressor);
+
+/*
+ * Final step that prepends the block header just before the location pointed
+ * to by the block buffer. This means that there must be enough space there
+ * for the header. Check with block_header_size().
+ */
+static void assembler(const struct block *, struct cursor *);
+static cg_err_t disassembler(struct block *, struct cursor *);
+
 static void print_locations_table(const struct location_table *t)
 {
-    DEBUG_LOG("Location table\n=============================\n");
-    DEBUG_LOG("File offset   Object\n");
-    DEBUG_LOG("0x%08x:   Globals 1 (%u)\n", t->off_globals1, t->num_globals1);
-    DEBUG_LOG("0x%08x:   Globals 2 (%u)\n", t->off_globals2, t->num_globals2);
-    DEBUG_LOG("0x%08x:   Change forms (%u)\n", t->off_change_forms, t->num_change_forms);
-    DEBUG_LOG("0x%08x:   Globals 3 (%u)\n", t->off_globals3, t->num_globals3);
-    DEBUG_LOG("0x%08x:   Form IDs\n", t->off_form_ids_count);
-    DEBUG_LOG("0x%08x:   Unknown table\n", t->off_unknown_table);
-    DEBUG_LOG("=============================\n");
+    DEBUG_LOG(
+       "+============================================+\n"
+       "|                Location table              |\n"
+       "+============================================+\n"
+       "|   %8s    %6s       %s            |\n"
+       "| 0x%08x    %6u       Globals 1       |\n"
+       "| 0x%08x    %6u       Globals 2       |\n"
+       "| 0x%08x    %6u       Change forms    |\n"
+       "| 0x%08x    %6u       Globals 3       |\n"
+       "| 0x%08x                 Form IDs        |\n"
+       "| 0x%08x                 Unknown table   |\n"
+       "+============================================+\n",
+       "offset", "count", "item",
+       t->off_globals1, t->num_globals1,
+       t->off_globals2, t->num_globals2,
+       t->off_change_forms, t->num_change_forms,
+       t->off_globals3, t->num_globals3,
+       t->off_form_ids_count,
+       t->off_unknown_table
+    );
 }
 
 static bool supports_save_file_compression(const struct savegame *save)
@@ -284,14 +457,10 @@ static bool supports_light_plugins(const struct savegame *save)
     switch (save->game) {
     case SKYRIM:
         return save->priv->file_version >= 12 && save->priv->form_version >= 78;
-
     case FALLOUT4:
         return save->priv->file_version >= 12;
-
-    default:
-        BUG("invalid game");
-        abort();
     }
+    return false;
 }
 
 static unsigned snapshot_pixel_width(const struct savegame *save)
@@ -325,11 +494,78 @@ static inline FILETIME time_to_filetime(time_t t)
 }
 #endif
 
-static int encode_vsval(FILE *stream, uint32_t value)
+#define GLDA_TYPE_NUMBER_LIST                           \
+    X(0, OBJECT_GLDA_MISC_STATS)                        \
+    X(1, OBJECT_GLDA_PLAYER_LOCATION)                   \
+    X(2, OBJECT_GLDA_GAME)                              \
+    X(3, OBJECT_GLDA_GLOBAL_VARIABLES)                  \
+    X(4, OBJECT_GLDA_CREATED_OBJECTS)                   \
+    X(5, OBJECT_GLDA_EFFECTS)                           \
+    X(6, OBJECT_GLDA_WEATHER)                           \
+    X(7, OBJECT_GLDA_AUDIO)                             \
+    X(8, OBJECT_GLDA_SKY_CELLS)                         \
+    X(9, OBJECT_GLDA_9)                                 \
+    X(10, OBJECT_GLDA_10)                               \
+    X(11, OBJECT_GLDA_11)                               \
+    X(100, OBJECT_GLDA_PROCESS_LISTS)                   \
+    X(101, OBJECT_GLDA_COMBAT)                          \
+    X(102, OBJECT_GLDA_INTERFACE)                       \
+    X(103, OBJECT_GLDA_ACTOR_CAUSES)                    \
+    X(104, OBJECT_GLDA_104)                             \
+    X(105, OBJECT_GLDA_DETECTION_MANAGER)               \
+    X(106, OBJECT_GLDA_LOCATION_METADATA)               \
+    X(107, OBJECT_GLDA_QUEST_STATIC_DATA)               \
+    X(108, OBJECT_GLDA_STORYTELLER)                     \
+    X(109, OBJECT_GLDA_MAGIC_FAVORITES)                 \
+    X(110, OBJECT_GLDA_PLAYER_CONTROLS)                 \
+    X(111, OBJECT_GLDA_STORY_EVENT_MANAGER)             \
+    X(112, OBJECT_GLDA_INGREDIENT_SHARED)               \
+    X(113, OBJECT_GLDA_MENU_CONTROLS)                   \
+    X(114, OBJECT_GLDA_MENU_TOPIC_MANAGER)              \
+    X(115, OBJECT_GLDA_115)                             \
+    X(116, OBJECT_GLDA_116)                             \
+    X(117, OBJECT_GLDA_117)                             \
+    X(1000, OBJECT_GLDA_TEMP_EFFECTS)                   \
+    X(1001, OBJECT_GLDA_PAPYRUS)                        \
+    X(1002, OBJECT_GLDA_ANIM_OBJECTS)                   \
+    X(1003, OBJECT_GLDA_TIMER)                          \
+    X(1004, OBJECT_GLDA_SYNCHRONISED_ANIMS)             \
+    X(1005, OBJECT_GLDA_MAIN)                           \
+    X(1006, OBJECT_GLDA_1006)                           \
+    X(1007, OBJECT_GLDA_1007)
+
+static unsigned glda_type_number(enum object_type type)
+{
+#define X(number, object_type)  case object_type: return number;
+    switch (type) {
+        GLDA_TYPE_NUMBER_LIST
+        default:
+            assert(0); /* Invalid object type argument. */
+            return 0;
+    }
+#undef X
+}
+
+static int object_type_from_glda_type_number(int type_number)
+{
+#define X(number, object_type)  case number: return object_type;
+    switch (type_number) {
+        GLDA_TYPE_NUMBER_LIST
+        default:
+            /* No object type for type_number. */
+            return -1;
+    }
+#undef X
+}
+
+static cg_err_t encode_vsval(struct cursor *cursor, uint32_t value)
 {
     int num_octets;
 
-    assert(value <= VSVAL_MAX);
+    if (value > VSVAL_MAX) {
+        assert(0);
+        return CG_INVAL;
+    }
 
     /*
      * 2 least significant bits determine vsval size
@@ -340,15 +576,17 @@ static int encode_vsval(FILE *stream, uint32_t value)
      *     01       |   2 octets
      *     10       |   3 octets
      */
-    value <<= 2;            /* vsval size information takes 2 bits. */
+    value <<= 2;               /* vsval size information takes 2 bits. */
     value &= 0xffffffu;        /* vsval max width is 24 bits. */
     num_octets = ((value >= 0x100u) << (value >= 0x10000u)) + 1;
-    value |= num_octets - 1; /* add size information */
-    value = htole32(value);  /* vsval is little endian */
-    return write_bytes(stream, &value, num_octets);
+    value |= num_octets - 1;   /* add size information */
+    value = htole32(value);    /* vsval is little endian */
+
+    c_store_bytes(cursor, &value, num_octets);
+    return CG_OK;
 }
 
-static cg_err_t decode_vsval(FILE *stream, uint32_t *out)
+static cg_err_t decode_vsval(struct cursor *cursor, uint32_t *out)
 {
     uint8_t b[3] = {0};
     int i;
@@ -358,7 +596,7 @@ static cg_err_t decode_vsval(FILE *stream, uint32_t *out)
      * or octet count is invalid.
      */
     for (i = 0; i < ((b[0] + 1) & 0x3); ++i) {
-        if (!get_u8(stream, &b[i])) {
+        if (!c_load_u8(cursor, &b[i])) {
             return CG_EOF;
         }
     }
@@ -374,13 +612,17 @@ static cg_err_t decode_vsval(FILE *stream, uint32_t *out)
     return CG_OK;
 }
 
-static cg_err_t get_le16_str(FILE *stream, char **string_out)
+static cg_err_t c_load_le16_str(struct cursor *cursor, char **string_out)
 {
     uint16_t string_length;
     char *string;
 
-    if (!get_le16(stream, &string_length)) {
+    if (!c_load_le16(cursor, &string_length)) {
         return CG_EOF;
+    }
+
+    if (string_length >= 512) {
+        DEBUG_LOG("Reading a very long string (%u chars).\n", string_length);
     }
 
     string = malloc((size_t)string_length + 1);
@@ -388,7 +630,7 @@ static cg_err_t get_le16_str(FILE *stream, char **string_out)
         return CG_NO_MEM;
     }
 
-    if (read_bytes(stream, string, string_length) != string_length) {
+    if (!c_load_bytes(cursor, string, string_length)) {
         free(string);
         return CG_EOF;
     }
@@ -399,31 +641,23 @@ static cg_err_t get_le16_str(FILE *stream, char **string_out)
     return CG_OK;
 }
 
-static int put_le16_str(FILE *restrict stream, const char *restrict string)
+static void c_store_le16_str(struct cursor *restrict cursor, const char *restrict string)
 {
     size_t length = strlen(string);
 
     assert(length <= UINT16_MAX);
 
-    if (!put_le16(stream, length)) {
-        return 0;
-    }
-
-    if (write_bytes(stream, string, length) != length) {
-        return 0;
-    }
-
-    return 1;
+    c_store_le16(cursor, length);
+    c_store_bytes(cursor, string, length);
 }
 
-static cg_err_t read_le16_str_array(FILE *stream, char **array, size_t length)
+static cg_err_t read_le16_str_array(struct cursor *cursor, char **array, int length)
 {
     cg_err_t err = CG_OK;
-    size_t i;
+    int i;
 
     for (i = 0; i < length; ++i) {
-        err = get_le16_str(stream, &array[i]);
-
+        err = c_load_le16_str(cursor, &array[i]);
         if (err) {
             break;
         }
@@ -439,30 +673,7 @@ static cg_err_t read_le16_str_array(FILE *stream, char **array, size_t length)
     return err;
 }
 
-static cg_err_t read_full_region(FILE *stream, struct region r)
-{
-    cg_err_t err = CG_OK;
-
-    if (read_bytes(stream, r.data, r.size) != r.size) {
-        err = CG_EOF;
-    }
-
-    return err;
-}
-
-static cg_err_t write_full_region(FILE *stream, struct cregion cr)
-{
-    cg_err_t err = CG_OK;
-
-    if (write_bytes(stream, cr.data, cr.size) != cr.size) {
-        err = CG_EOF;
-    }
-
-    return err;
-}
-
-
-static cg_err_t alloc_and_read_chunk(FILE *stream, struct chunk **chunk_out, size_t length)
+static cg_err_t alloc_and_read_chunk(struct cursor *cursor, struct chunk **chunk_out, size_t length)
 {
     struct chunk *chunk;
 
@@ -472,7 +683,7 @@ static cg_err_t alloc_and_read_chunk(FILE *stream, struct chunk **chunk_out, siz
         return CG_NO_MEM;
     }
 
-    if (read_full_region(stream, as_region(chunk)) != CG_OK) {
+    if (!c_load_bytes(cursor, chunk->data, length)) {
         free(chunk);
         return CG_EOF;
     }
@@ -495,1354 +706,10 @@ static void dump_to_file(const char *filename, struct cregion region, long offse
         fseek(fp, offset, SEEK_SET);
     }
 
-    write_full_region(fp, region);
+    write_bytes(fp, region.data, region.size);
     fclose(fp);
 }
 
-static cg_err_t read_global_data(FILE *stream, struct savegame *save)
-{
-    long start_of_data, file_pos;
-    uint32_t type, length;
-    cg_err_t err = CG_OK;
-
-    if (!get_le32(stream, &type) || !get_le32(stream, &length)) {
-        return CG_EOF;
-    }
-
-    start_of_data = ftell(stream);
-
-    if (start_of_data == -1) {
-        return CG_FTELL;
-    }
-
-    DEBUG_LOG("0x%08lx: Global data, type=%u length=%u\n", ftell(stream), type, length);
-
-    switch(type) {
-    case 0: /* Miscellaneous statistics */
-        if (!get_le32(stream, &save->num_misc_stats)) {
-            err = CG_EOF;
-            break;
-        }
-
-        if (save->num_misc_stats == 0) {
-            break;
-        }
-
-        save->misc_stats = calloc(save->num_misc_stats, sizeof(*save->misc_stats));
-        if (!save->misc_stats) {
-            err = CG_NO_MEM;
-            break;
-        }
-
-        for (uint32_t i = 0u; i < save->num_misc_stats; ++i) {
-            err = get_le16_str(stream, &save->misc_stats[i].name);
-            if (err) {
-                break;
-            }
-
-            save->misc_stats[i].category = get_u8_or0(stream);
-            save->misc_stats[i].value    = get_le32_or0(stream);
-        }
-        break;
-
-    case 1: /* Player location */
-        save->player_location.next_object_id = get_le32_or0(stream);
-        save->player_location.world_space1   = get_ref_id(stream);
-        save->player_location.coord_x        = (int32_t)get_le32_or0(stream);
-        save->player_location.coord_y        = (int32_t)get_le32_or0(stream);
-        save->player_location.world_space2   = get_ref_id(stream);
-        save->player_location.pos_x          = get_lef32_or0(stream);
-        save->player_location.pos_y          = get_lef32_or0(stream);
-        save->player_location.pos_z          = get_lef32_or0(stream);
-        if (save->game == SKYRIM) {
-            save->player_location.unknown    = get_u8_or0(stream); /* Skyrim only */
-        }
-        break;
-
-    case 3:
-        err = decode_vsval(stream, &save->num_global_vars);
-        if (err || save->num_global_vars == 0) {
-            break;
-        }
-
-        save->global_vars = calloc(save->num_global_vars, sizeof(*save->global_vars));
-        if (!save->global_vars) {
-            err = CG_NO_MEM;
-            break;
-        }
-
-        for (uint32_t i = 0u; i < save->num_global_vars; ++i) {
-            save->global_vars[i].form_id = get_ref_id(stream);
-            save->global_vars[i].value   = get_lef32_or0(stream);
-        }
-        break;
-
-    case 6:
-        save->weather.climate      = get_ref_id(stream);
-        save->weather.weather      = get_ref_id(stream);
-        save->weather.prev_weather = get_ref_id(stream);
-        save->weather.unk_weather1 = get_ref_id(stream);
-        save->weather.unk_weather2 = get_ref_id(stream);
-        save->weather.regn_weather = get_ref_id(stream);
-        save->weather.current_time = get_lef32_or0(stream);
-        save->weather.begin_time   = get_lef32_or0(stream);
-        save->weather.weather_pct  = get_lef32_or0(stream);
-        for (size_t i = 0u; i < 6; ++i)
-            save->weather.data1[i] = get_le32_or0(stream);
-        save->weather.data2        = get_lef32_or0(stream);
-        save->weather.data3        = get_le32_or0(stream);
-        save->weather.flags        = get_u8_or0(stream);
-
-        if (feof(stream) || ferror(stream)) {
-            err = CG_EOF;
-            break;
-        }
-
-        /* Read the remaining bytes. Don't know what they are. */
-        file_pos = ftell(stream);
-
-        if (file_pos == -1) {
-            err = CG_FTELL;
-            break;
-        }
-
-        save->weather.data4_sz = length - (file_pos - start_of_data);
-        if (save->weather.data4_sz > 0) {
-            save->weather.data4 = malloc(save->weather.data4_sz);
-            if (!save->weather.data4) {
-                err = CG_NO_MEM;
-                break;
-            }
-
-            read_bytes(stream, save->weather.data4, save->weather.data4_sz);
-        }
-        break;
-
-    case 109:
-        err = decode_vsval(stream, &save->num_favourites);
-        if (err) {
-            break;
-        }
-
-        save->favourites = calloc(save->num_favourites, sizeof(*save->favourites));
-        if (!save->favourites) {
-            err = CG_NO_MEM;
-            break;
-        }
-
-        for (uint32_t i = 0; i < save->num_favourites; ++i) {
-            save->favourites[i] = get_ref_id(stream);
-        }
-
-        err = decode_vsval(stream, &save->num_hotkeys);
-        if (err) {
-            break;
-        }
-
-        save->hotkeys = calloc(save->num_hotkeys, sizeof(*save->hotkeys));
-        if (!save->hotkeys) {
-            err = CG_NO_MEM;
-            break;
-        }
-
-        for (uint32_t i = 0; i < save->num_hotkeys; ++i) {
-            save->hotkeys[i] = get_ref_id(stream);
-        }
-        break;
-
-    case 2:
-    case 4:
-    case 5:
-    case 7:
-    case 8:
-    case 100:
-    case 101:
-    case 102:
-    case 103:
-    case 104:
-    case 105:
-    case 106:
-    case 107:
-    case 108:
-    case 110:
-    case 111:
-    case 112:
-    case 113:
-    case 114:
-    case 1000:
-    case 1001:
-    case 1002:
-    case 1003:
-    case 1004:
-    case 1005:
-        {
-            /*
-             * Read an unknown global data structure.
-             */
-            struct chunk **slot;
-
-            if (type < 100) {
-                slot = &save->priv->globals1[type];
-            }
-            else if (type < 1000) {
-                slot = &save->priv->globals2[type - 100];
-            }
-            else {
-                slot = &save->priv->globals3[type - 1000];
-            }
-
-            if (*slot != NULL) {
-                eprintf("encountered multiple global data of type %u\n", type);
-                err = CG_CORRUPT;
-                break;
-            }
-
-            err = alloc_and_read_chunk(stream, slot, length);
-            break;
-        }
-
-    default:
-        break;
-    }
-
-    if (err) {
-        return err;
-    }
-    else if (feof(stream) || ferror(stream)) {
-        return CG_EOF;
-    }
-
-    file_pos = ftell(stream);
-
-    if (file_pos == -1) {
-        perror("ftell");
-        return CG_FTELL;
-    }
-
-    long bytes_read = file_pos - start_of_data;
-    long bytes_remaining = (long)length - bytes_read;
-
-    if (bytes_remaining != 0) {
-        DEBUG_LOG("bytes remaining=%ld, type=%u\n", bytes_remaining, type);
-        return CG_EOF;
-    }
-
-    return err;
-}
-
-static cg_err_t read_change_form(FILE *restrict stream, struct change_form *restrict cf)
-{
-    memset(cf, 0, sizeof(*cf));
-
-    cf->form_id = get_ref_id(stream);
-    cf->flags   = get_le32_or0(stream);
-    cf->type    = get_u8_or0(stream);
-    cf->version = get_u8_or0(stream);
-
-    if (feof(stream) || ferror(stream)) {
-        return CG_EOF;
-    }
-
-
-    /* Two upper bits of type determine the sizes of length1 and length2. */
-    switch ((cf->type >> 6) & 0x3) {
-    case 0:
-        cf->length1 = get_u8_or0(stream);
-        cf->length2 = get_u8_or0(stream);
-        break;
-    case 1:
-        cf->length1 = get_le16_or0(stream);
-        cf->length2 = get_le16_or0(stream);
-        break;
-    case 2:
-        cf->length1 = get_le32_or0(stream);
-        cf->length2 = get_le32_or0(stream);
-        break;
-    default:
-        /* 
-         * The savefile may be corrupt, but more likely there's a bug that
-         * led us here.
-         */
-        BUG("change form type length bits: 11");
-        return CG_CORRUPT;
-    }
-
-    if (feof(stream) || ferror(stream)) {
-        return CG_EOF;
-    }
-
-    DEBUG_LOG("0x%08lx: Change form, formid=%u flags=0x%x type=%u version=%u length1=%u length2=%u\n",
-              ftell(stream),
-              cf->form_id,
-              cf->flags,
-              cf->type & 0x3fu,
-              cf->version,
-              cf->length1,
-              cf->length2);
-
-    /* TODO: Support for change forms */
-    /* cf->type &= 0x3fu; */
-
-    cf->data = malloc(cf->length1);
-
-    if (cf->data == NULL) {
-        return CG_NO_MEM;
-    }
-
-    if (read_bytes(stream, cf->data, cf->length1) != cf->length1) {
-        return CG_EOF;
-    }
-
-    return CG_OK;
-}
-
-static cg_err_t read_save_data(FILE *stream, struct savegame *save);
-static cg_err_t read_savefile(FILE *stream, struct savegame *save);
-static struct savegame *savegame_alloc(void);
-
-struct savegame *cengine_savefile_read(const char *filename)
-{
-    struct savegame *save;
-    FILE *stream;
-    cg_err_t err;
-
-    DEBUG_LOG("Opening save file %s\n", filename);
-
-    if ((stream = fopen(filename, "rb")) == NULL) {
-        perror("fopen");
-        return NULL;
-    }
-
-    if ((save = savegame_alloc()) == NULL) {
-        fclose(stream);
-        return NULL;
-    }
-
-    DEBUG_LOG("Reading save file %s\n", filename);
-
-    err = read_savefile(stream, save);
-
-    switch (err) {
-    case CG_OK:
-        /* No error. */
-        break;
-    case CG_UNSUPPORTED:
-        eprintf("File cannot be read because its format is unsupported.\n");
-        break;
-    case CG_EOF:
-        eprintf("File ended too soon. Is the save corrupt?\n");
-        break;
-    case CG_NO_MEM:
-        eprintf("Failed to allocate memory.\n");
-        break;
-    }
-
-    (void) fclose(stream);
-
-    if (err) {
-        DEBUG_LOG("Error %d occurred while reading save file\n", err);
-        savegame_free(save);
-        return NULL;
-    }
-
-    return save;
-}
-
-static cg_err_t read_savefile(FILE *stream, struct savegame *save)
-{
-    uint32_t block_size;
-    cg_err_t err = CG_OK;
-
-    /*
-     * Check the file signature.
-     */
-    {
-        char file_signature[48] = {0};
-
-        DEBUG_LOG("0x%08lx: Reading file signature\n", ftell(stream));
-
-        read_bytes(stream, file_signature, sizeof(file_signature));
-
-        if (!memcmp(file_signature, TESV_SIGNATURE, strlen(TESV_SIGNATURE))) {
-            DEBUG_LOG("TESV file signature detected\n");
-
-            save->game = SKYRIM;
-            block_size = strlen(TESV_SIGNATURE);
-        }
-        else if(!memcmp(file_signature, FO4_SIGNATURE, strlen(FO4_SIGNATURE))) {
-            DEBUG_LOG("Fallout 4 file signature detected\n");
-
-            save->game = FALLOUT4;
-            block_size = strlen(FO4_SIGNATURE);
-            //return CG_UNSUPPORTED;
-        }
-        else {
-            return CG_UNSUPPORTED;
-        }
-
-        /* Return to the end of the file signature. */
-        if (fseek(stream, block_size, SEEK_SET) == -1) {
-            perror("fseek");
-            return CG_FSEEK;
-        }
-    }
-
-    /*
-     * Read the file header.
-     */
-    if (!get_le32(stream, &block_size)) {
-        return CG_EOF;
-    }
-
-
-    DEBUG_LOG("0x%08lx: Reading file header\n", ftell(stream));
-
-    if (!get_le32(stream, &save->priv->file_version)) {
-        return CG_EOF;
-    }
-
-    DEBUG_LOG("File version: %u\n", save->priv->file_version);
-
-    if (save->priv->file_version > 15) {
-        return CG_UNSUPPORTED;
-    }
-
-    save->save_num = get_le32_or0(stream);
-    err = get_le16_str(stream, &save->player_name);
-    if (err) return err;
-    save->level = get_le32_or0(stream);
-    err = get_le16_str(stream, &save->player_location_name);
-    if (err) return err;
-    err = get_le16_str(stream, &save->game_time);
-    if (err) return err;
-    err = get_le16_str(stream, &save->race_id);
-    if (err) return err;
-    save->sex             = get_le16_or0(stream);
-    save->current_xp      = get_lef32_or0(stream);
-    save->target_xp       = get_lef32_or0(stream);
-    save->filetime        = get_le64_or0(stream);
-    save->snapshot_width  = get_le32_or0(stream);
-    save->snapshot_height = get_le32_or0(stream);
-
-    if (supports_save_file_compression(save)) {
-        /*
-         * Read compression type and validate it.
-         */
-        uint16_t compression_type;
-
-        if (!get_le16(stream, &compression_type)) {
-            return CG_EOF;
-        }
-
-        /* Validate. */
-        if (!(compression_type <= 2)) {
-            DEBUG_LOG("Read an invalid compression type: %u\n", compression_type);
-            return CG_CORRUPT;
-        }
-
-        save->priv->compressor = compression_type;
-
-        DEBUG_LOG("Save file compression algorithm = %s.\n",
-            compression_type == LZ4 ? "lz4" :
-            compression_type == ZLIB ? "zlib" : "none");
-    }
-    else {
-        DEBUG_LOG("No save file compression support\n");
-    }
-
-    if (feof(stream) || ferror(stream)) {
-        return CG_EOF;
-    }
-
-    /*
-     * Read the snapshot.
-     */
-    save->snapshot_bytes_per_pixel = snapshot_pixel_width(save);
-    save->snapshot_size = save->snapshot_width * save->snapshot_height *
-                          save->snapshot_bytes_per_pixel;
-    save->snapshot_data = malloc(save->snapshot_size);
-    if (!save->snapshot_data) {
-        return CG_NO_MEM;
-    }
-
-    DEBUG_LOG("0x%08lx: Reading %u bytes of snapshot data\n", ftell(stream), save->snapshot_size);
-
-    read_bytes(stream, save->snapshot_data, save->snapshot_size);
-
-    /*
-     * Depending on file version, the save data could be compressed.
-     * If the save file does not contain compression information, just keep
-     * reading from this stream. Otherwise, decompress the save data into a
-     * temporary stream and continue reading from there.
-     */
-    if (!supports_save_file_compression(save)) {
-        return read_save_data(stream, save);
-    }
-
-    /* Save file contains compression information. */
-    struct chunk *uncompressed = NULL;
-    struct chunk *compressed = NULL;
-    FILE *temp_stream = NULL;
-    long start_of_save_data;
-    int decompress_rc;
-
-    start_of_save_data = ftell(stream);
-    if (start_of_save_data == -1) {
-        perror("ftell");
-        return CG_FTELL;
-    }
-
-    /* Read compression related sizes. */
-    if (!get_le32(stream, &block_size)) {
-        err = CG_EOF;
-        goto out_error;
-    }
-
-    uncompressed = chunk_alloc(block_size);
-
-    if (!get_le32(stream, &block_size)) {
-        err = CG_EOF;
-        goto out_error;
-    }
-
-    compressed = chunk_alloc(block_size);
-    
-    if (!uncompressed || !compressed) {
-        err = CG_NO_MEM;
-        goto out_error;
-    }
-
-    DEBUG_LOG("Save data uncompressed length: %zu\n", uncompressed->size);
-    DEBUG_LOG("Save data compressed length:   %zu\n", compressed->size);
-
-    if (read_full_region(stream, as_region(compressed)) != CG_OK) {
-        err = CG_EOF;
-        goto out_error;
-    }
-
-    /*
-     * Decompress save data.
-     */
-    DEBUG_LOG("Decompressing save data\n");
-
-    switch (save->priv->compressor) {
-    case NO_COMPRESSION:
-        eprintf("No handler for uncompressed save data\n");
-        exit(1);
-
-    case LZ4:
-        decompress_rc = lz4_decompress(as_cregion(compressed), as_region(uncompressed));
-        break;
-
-    case ZLIB:
-        decompress_rc = zlib_decompress(as_cregion(compressed), as_region(uncompressed));
-        break;
-
-    default:
-        BUG("invalid compressor");
-        abort();
-    }
-
-    free(compressed);
-    compressed = NULL;
-
-    if (decompress_rc == -1) {
-        err = CG_CORRUPT;
-        goto out_error;
-    }
-
-    DEBUG_LOG("Dumping decompressed save data\n");
-    dump_to_file("decompressed_save_data", as_cregion(uncompressed), start_of_save_data);
-
-    temp_stream = tmpfile();
-
-    if (!temp_stream) {
-        err = CG_TMPFILE;
-        goto out_error;
-    }
-
-    if (fseek(temp_stream, start_of_save_data, SEEK_SET) == -1) {
-        err = CG_FSEEK;
-        goto out_error;
-    }
-
-    if (write_full_region(temp_stream, as_cregion(uncompressed)) != CG_OK) {
-        err = CG_EOF;
-        goto out_error;
-    }
-
-    free(uncompressed);
-    uncompressed = NULL;
-
-    if (fseek(temp_stream, start_of_save_data, SEEK_SET) == -1) {
-        err = CG_FSEEK;
-        goto out_error;
-    }
-
-    err = read_save_data(temp_stream, save);
-
-    /* Ensure ferror/feof is caught. */
-    if (!err && (ferror(temp_stream) || feof(temp_stream))) {
-        err = CG_EOF;
-    }
-
-    (void) fclose(temp_stream);
-    temp_stream = NULL;
-
-    return err;
-
-out_error:
-    free(compressed);
-    free(uncompressed);
-    if (temp_stream) {
-        fclose(temp_stream);
-    }
-
-    return err;
-}
-
-static cg_err_t read_save_data(FILE *stream, struct savegame *save)
-{
-    struct location_table loc;
-    uint32_t block_size;
-    cg_err_t err;
-
-    DEBUG_LOG("0x%08lx: Save data begins\n", ftell(stream));
-
-    if (!get_u8(stream, &save->priv->form_version)) {
-        return CG_EOF;
-    }
-
-    DEBUG_LOG("Save data form version: %u\n", save->priv->form_version);
-
-    if (save->game == FALLOUT4) {
-        err = get_le16_str(stream, &save->game_version);
-
-        if (err) {
-            return err;
-        }
-    }
-
-    /*
-     * Read plugin information.
-     */
-
-    /*
-     * Length of plugin information: size of plugin count, plugin strings,
-     * light plugin count and light plugin string.
-     */
-    (void) get_le32_or0(stream);
-
-    if (!get_u8(stream, &save->num_plugins)) {
-        return CG_EOF;
-    }
-
-    DEBUG_LOG("0x%08lx: Reading %u plugins\n", ftell(stream), save->num_plugins);
-
-    save->plugins = calloc(save->num_plugins, sizeof(*save->plugins));
-
-    if (!save->plugins) {
-        return CG_NO_MEM;
-    }
-
-    err = read_le16_str_array(stream, save->plugins, save->num_plugins);
-
-    if (err) {
-        return err;
-    }
-
-    /*
-     * Read light plugins.
-     */
-    if (supports_light_plugins(save)) {
-        if (!get_le16(stream, &save->num_light_plugins)) {
-            return CG_EOF;
-        }
-
-        DEBUG_LOG("0x%08lx: Reading %u light plugins\n", ftell(stream), save->num_light_plugins);
-
-        save->light_plugins = calloc(save->num_light_plugins, sizeof(*save->light_plugins));
-
-        if (!save->light_plugins) {
-            return CG_NO_MEM;
-        }
-
-        err = read_le16_str_array(stream, save->light_plugins, save->num_light_plugins);
-
-        if (err) {
-            return err;
-        }
-    }
-
-    /*
-     * Read the offsets and the sizes of savefile objects.
-     */
-    DEBUG_LOG("0x%08lx: Reading locations table\n", ftell(stream));
-
-    loc.off_form_ids_count = get_le32_or0(stream);
-    loc.off_unknown_table  = get_le32_or0(stream);
-    loc.off_globals1       = get_le32_or0(stream);
-    loc.off_globals2       = get_le32_or0(stream);
-    loc.off_change_forms   = get_le32_or0(stream);
-    loc.off_globals3       = get_le32_or0(stream);
-    loc.num_globals1       = get_le32_or0(stream);
-    loc.num_globals2       = get_le32_or0(stream);
-    loc.num_globals3       = get_le32_or0(stream);
-    loc.num_change_forms   = get_le32_or0(stream);
-
-    save->priv->n_change_forms = loc.num_change_forms;
-
-    /* Skip junk. */
-    if (fseek(stream, 60, SEEK_CUR) == -1) {
-        perror("fseek");
-        return CG_FSEEK;
-    }
-
-    print_locations_table(&loc);
-
-    /* Globals 3 table count is bugged and short by 1. */
-    loc.num_globals3 += 1;
-
-    /*
-     * Read global data tables 1 and 2.
-     */
-    DEBUG_LOG("0x%08lx: Reading global data table 1\n", ftell(stream));
-
-    for(unsigned i = 0; i < loc.num_globals1; ++i) {
-        if ((err = read_global_data(stream, save)) != CG_OK) {
-            return err;
-        }
-    }
-
-    DEBUG_LOG("0x%08lx: Reading global data table 2\n", ftell(stream));
-
-    for(unsigned i = 0; i < loc.num_globals2; ++i) {
-        if ((err = read_global_data(stream, save)) != CG_OK) {
-            return err;
-        }
-    }
-
-    /*
-     * Read change forms.
-     */
-    save->priv->change_forms = calloc(loc.num_change_forms, sizeof(*save->priv->change_forms));
-
-    if (!save->priv->change_forms) {
-        return CG_NO_MEM;
-    }
-
-    DEBUG_LOG("0x%08lx: Reading %u change forms\n", ftell(stream), loc.num_change_forms);
-
-    for (unsigned i = 0; i < loc.num_change_forms; ++i) {
-        err = read_change_form(stream, save->priv->change_forms + i);
-        if (err) {
-            return err;
-        }
-    }
-
-    /*
-     * Read global data table 3.
-     */
-    DEBUG_LOG("0x%08lx: Reading global data table 3\n", ftell(stream));
-
-    for(unsigned i = 0; i < loc.num_globals3; ++i) {
-        if ((err = read_global_data(stream, save)) != CG_OK) {
-            return err;
-        }
-    }
-
-    /*
-     * Read form IDs.
-     */
-    if (!get_le32(stream, &save->num_form_ids)) {
-        return CG_EOF;
-    }
-
-    DEBUG_LOG("0x%08lx: Reading %u form IDs\n", ftell(stream), save->num_form_ids);
-
-    save->form_ids = calloc(save->num_form_ids, sizeof(*save->form_ids));
-
-    if (!save->form_ids) {
-        return CG_NO_MEM;
-    }
-
-    read_le32_array(stream, save->form_ids, save->num_form_ids);
-
-    /*
-     * Read world spaces.
-     */
-    if (!get_le32(stream, &save->num_world_spaces)) {
-        return CG_EOF;
-    }
-
-    DEBUG_LOG("0x%08lx: Reading %u world spaces\n", ftell(stream), save->num_world_spaces);
-
-    read_le32_array(stream, save->world_spaces, save->num_world_spaces);
-
-    /*
-     * Read the unknown chunk at the end of the savefile.
-     */
-    if (!get_le32(stream, &block_size)) {
-        return CG_EOF;
-    }
-
-    DEBUG_LOG("0x%08lx: Reading unknown table\n", ftell(stream));
-    err = alloc_and_read_chunk(stream, &save->priv->unknown3, block_size);
-
-    return err;
-}
-
-static void write_locations(FILE *restrict stream,
-        const struct location_table *restrict table)
-{
-    put_le32(stream, table->off_form_ids_count);
-    put_le32(stream, table->off_unknown_table);
-    put_le32(stream, table->off_globals1);
-    put_le32(stream, table->off_globals2);
-    put_le32(stream, table->off_change_forms);
-    put_le32(stream, table->off_globals3);
-    put_le32(stream, table->num_globals1);
-    put_le32(stream, table->num_globals2);
-    /* Subtract by 1: Skyrim doesn't acknowledge the last global data. */
-    put_le32(stream, table->num_globals3 - 1);
-    put_le32(stream, table->num_change_forms);
-
-    /* Add 60 zeros at the end. */
-    fseek(stream, 59, SEEK_CUR);
-    fputc(0, stream);
-}
-
-#define BEGIN_VARIABLE_LENGTH_BLOCK(stream)                                    \
-{                                                                              \
-    put_le32(stream, 0);                                                       \
-    long $block_start = ftell(stream);                                         \
-    {
-
-#define END_VARIABLE_LENGTH_BLOCK(stream)                                      \
-    }                                                                          \
-    long $block_end = ftell(stream);                                           \
-    long $block_len = $block_end - $block_start;                               \
-    fseek(stream, $block_start - sizeof(uint32_t), SEEK_SET);                  \
-    put_le32(stream, $block_len);                                              \
-    fseek(stream, $block_end, SEEK_SET);                                       \
-}
-
-static void write_global_data(FILE *stream, const struct savegame *save, unsigned type)
-{
-    const struct chunk *global;
-
-    assert(type <= 1005);
-
-    if (type < 100) {
-        global = save->priv->globals1[type];
-    }
-    else if (type < 1000) {
-        global = save->priv->globals2[type - 100];
-    }
-    else {
-        global = save->priv->globals3[type - 1000];
-    }
-
-    assert(global);
-
-    put_le32(stream, type);
-    put_le32(stream, global->size);
-
-    DEBUG_LOG("0x%08lx: writing global data type=%u\n", ftell(stream), type);
-    write_full_region(stream, as_cregion(global));
-}
-
-/* Write types 0 to 8. */
-static int write_global_data_table1(FILE *restrict stream, const struct savegame *save)
-{
-    int num_objects = 0;
-
-    /*
-     * Write miscellaneous statistics.
-     */
-    put_le32(stream, 0);
-    BEGIN_VARIABLE_LENGTH_BLOCK(stream)
-    put_le32(stream, save->num_misc_stats);
-    for (uint32_t i = 0u; i < save->num_misc_stats; ++i) {
-        put_le16_str(stream, save->misc_stats[i].name);
-        put_u8(stream,       save->misc_stats[i].category);
-        put_le32(stream,     save->misc_stats[i].value);
-    }
-    END_VARIABLE_LENGTH_BLOCK(stream)
-    num_objects++;
-
-    /*
-     * Write player location.
-     */
-    put_le32(stream, 1);
-    BEGIN_VARIABLE_LENGTH_BLOCK(stream)
-    put_le32(stream, save->player_location.next_object_id);
-    put_ref_id(stream, save->player_location.world_space1);
-    put_le32(stream, save->player_location.coord_x);
-    put_le32(stream, save->player_location.coord_y);
-    put_ref_id(stream, save->player_location.world_space2);
-    put_lef32(stream, save->player_location.pos_x);
-    put_lef32(stream, save->player_location.pos_y);
-    put_lef32(stream, save->player_location.pos_z);
-    put_u8(stream, save->player_location.unknown); /* Present in Skyrim savefiles. */
-    END_VARIABLE_LENGTH_BLOCK(stream)
-    num_objects++;
-
-    write_global_data(stream, save, 2); num_objects++;
-
-    /*
-     * Write global variables.
-     */
-    put_le32(stream, 3);
-    BEGIN_VARIABLE_LENGTH_BLOCK(stream)
-    encode_vsval(stream, save->num_global_vars);
-    for (uint32_t i = 0u; i < save->num_global_vars; ++i) {
-        put_ref_id(stream, save->global_vars[i].form_id);
-        put_lef32(stream, save->global_vars[i].value);
-    }
-    END_VARIABLE_LENGTH_BLOCK(stream)
-    num_objects++;
-
-    write_global_data(stream, save, 4); num_objects++;
-    write_global_data(stream, save, 5); num_objects++;
-
-    /*
-     * Write weather.
-     */
-    put_le32(stream, 6);
-    BEGIN_VARIABLE_LENGTH_BLOCK(stream)
-    put_ref_id(stream, save->weather.climate);
-    put_ref_id(stream, save->weather.weather);
-    put_ref_id(stream, save->weather.prev_weather);
-    put_ref_id(stream, save->weather.unk_weather1);
-    put_ref_id(stream, save->weather.unk_weather2);
-    put_ref_id(stream, save->weather.regn_weather);
-    put_lef32(stream, save->weather.current_time);
-    put_lef32(stream, save->weather.begin_time);
-    put_lef32(stream, save->weather.weather_pct);
-    for (size_t i = 0u; i < 6; ++i)
-        put_le32(stream, save->weather.data1[i]);
-    put_lef32(stream, save->weather.data2);
-    put_le32(stream, save->weather.data3);
-    put_u8(stream, save->weather.flags);
-    write_bytes(stream, save->weather.data4, save->weather.data4_sz);
-    END_VARIABLE_LENGTH_BLOCK(stream)
-    num_objects++;
-
-    write_global_data(stream, save, 7); num_objects++;
-    write_global_data(stream, save, 8); num_objects++;
-
-    return num_objects;
-}
-
-/* Write types 100 to 114. */
-static int write_global_data_table2(FILE *restrict stream, const struct savegame *save)
-{
-    int num_objects = 0;
-
-    write_global_data(stream, save, 100); num_objects++;
-    write_global_data(stream, save, 101); num_objects++;
-    write_global_data(stream, save, 102); num_objects++;
-    write_global_data(stream, save, 103); num_objects++;
-    if (save->priv->globals2[4]) {
-        write_global_data(stream, save, 104); num_objects++;
-    }
-    write_global_data(stream, save, 105); num_objects++;
-    write_global_data(stream, save, 106); num_objects++;
-    write_global_data(stream, save, 107); num_objects++;
-    write_global_data(stream, save, 108); num_objects++;
-
-    /*
-     * Write magic favourites.
-     */
-    put_le32(stream, 109);
-    BEGIN_VARIABLE_LENGTH_BLOCK(stream)
-    encode_vsval(stream, save->num_favourites);
-
-    for (uint32_t i = 0u; i < save->num_favourites; ++i) {
-        put_ref_id(stream, save->favourites[i]);
-    }
-
-    encode_vsval(stream, save->num_hotkeys);
-
-    for (uint32_t i = 0u; i < save->num_hotkeys; ++i) {
-        put_ref_id(stream, save->hotkeys[i]);
-    }
-    END_VARIABLE_LENGTH_BLOCK(stream)
-    num_objects++;
-
-    write_global_data(stream, save, 110); num_objects++;
-    write_global_data(stream, save, 111); num_objects++;
-    write_global_data(stream, save, 112); num_objects++;
-    write_global_data(stream, save, 113); num_objects++;
-    write_global_data(stream, save, 114); num_objects++;
-
-    return num_objects;
-}
-
-/* Write types 1000 to 1005. */
-static int write_global_data_table3(FILE *restrict stream, const struct savegame *save)
-{
-    int num_objects = 0;
-    write_global_data(stream, save, 1000); num_objects++;
-    write_global_data(stream, save, 1001); num_objects++;
-    write_global_data(stream, save, 1002); num_objects++;
-    write_global_data(stream, save, 1003); num_objects++;
-    write_global_data(stream, save, 1004); num_objects++;
-    write_global_data(stream, save, 1005); num_objects++;
-    return num_objects;
-}
-
-static void write_change_form(FILE *restrict stream,
-        const struct change_form *restrict cf)
-{
-    put_ref_id(stream, cf->form_id);
-    put_le32(stream, cf->flags);
-    put_u8(stream, cf->type);
-    put_u8(stream, cf->version);
-
-    /* Two upper bits of type determine the sizes of length1 and length2. */
-    switch ((cf->type >> 6) & 0x3) {
-    case 0:
-        put_u8(stream, cf->length1);
-        put_u8(stream, cf->length2);
-        break;
-    case 1:
-        put_le16(stream, cf->length1);
-        put_le16(stream, cf->length2);
-        break;
-    case 2:
-        put_le32(stream, cf->length1);
-        put_le32(stream, cf->length2);
-        break;
-    default:
-        /* Valid length types include uint8, uint16 and uint32. */
-        assert(0);
-    }
-
-    write_bytes(stream, cf->data, cf->length1);
-}
-
-static int write_save_data(FILE *restrict stream, const struct savegame *save)
-{
-    struct location_table loc = {0};
-    long location_table_offset;
-    long end_of_save_data;
-
-    DEBUG_LOG("save data begins at 0x%08lx\n", ftell(stream));
-
-    put_u8(stream, save->priv->form_version);
-
-    if (save->game == FALLOUT4) {
-        put_le16_str(stream, save->game_version);
-    }
-
-    /*
-     * Write plugin information.
-     */
-    BEGIN_VARIABLE_LENGTH_BLOCK(stream)
-    put_u8(stream, save->num_plugins);
-    for (uint32_t i = 0; i < save->num_plugins; ++i) {
-        put_le16_str(stream, save->plugins[i]);
-    }
-
-    if (supports_light_plugins(save)) {
-        put_le16(stream, save->num_light_plugins);
-        for (uint32_t i = 0; i < save->num_light_plugins; ++i) {
-            put_le16_str(stream, save->light_plugins[i]);
-        }
-    }
-    END_VARIABLE_LENGTH_BLOCK(stream)
-
-    location_table_offset = ftell(stream);
-
-    /* Locations table placeholder. */
-    write_locations(stream, &loc);
-
-    /*
-     * Write global data table 1.
-     */
-    loc.off_globals1 = ftell(stream);
-    loc.num_globals1 = write_global_data_table1(stream, save);
-
-    /*
-     * Write global data table 2.
-     */
-    loc.off_globals2 = ftell(stream);
-    loc.num_globals2 = write_global_data_table2(stream, save);
-
-    /*
-     * Write change forms.
-     */
-    loc.off_change_forms = ftell(stream);
-    loc.num_change_forms = save->priv->n_change_forms;
-    for (uint32_t i = 0; i < save->priv->n_change_forms; ++i) {
-        write_change_form(stream, &save->priv->change_forms[i]);
-    }
-
-    /*
-     * Write global data table 3.
-     */
-    loc.off_globals3 = ftell(stream);
-    loc.num_globals3 = write_global_data_table3(stream, save);
-
-    /*
-     * Write form IDs.
-     */
-    loc.off_form_ids_count = ftell(stream);
-    put_le32(stream, save->num_form_ids);
-    for (uint32_t i = 0; i < save->num_form_ids; ++i) {
-        put_le32(stream, save->form_ids[i]);
-    }
-
-    /*
-     * Write world spaces.
-     */
-    put_le32(stream, save->num_world_spaces);
-    for (uint32_t i = 0; i < save->num_world_spaces; ++i) {
-        put_le32(stream, save->world_spaces[i]);
-    }
-
-    /*
-     * Write unknown table.
-     */
-    loc.off_unknown_table = ftell(stream);
-    put_le32(stream, save->priv->unknown3->size);
-    write_full_region(stream, as_cregion(save->priv->unknown3));
-
-    end_of_save_data = ftell(stream);
-    if (end_of_save_data == -1) {
-        return CG_FTELL;
-    }
-
-    /*
-     * Go back and fill in the location table placeholder with real values.
-     */
-    if (fseek(stream, location_table_offset, SEEK_SET) == -1) {
-        return CG_FSEEK;
-    }
-
-    write_locations(stream, &loc);
-
-    if (fseek(stream, end_of_save_data, SEEK_SET) == -1) {
-        return CG_FSEEK;
-    }
-
-    if (ferror(stream)) {
-        return CG_EOF;
-    }
-
-    return CG_OK;
-}
-
-static int write_save_file(FILE *restrict stream, const struct savegame *save)
-{
-    cg_err_t err;
-
-    /*
-     * Write signature.
-     */
-    switch (save->game) {
-    case SKYRIM:
-        write_bytes(stream, TESV_SIGNATURE, strlen(TESV_SIGNATURE));
-        break;
-
-    case FALLOUT4:
-        write_bytes(stream, FO4_SIGNATURE, strlen(FO4_SIGNATURE));
-        break;
-   }
-
-    /*
-     * Write the file header.
-     */
-    BEGIN_VARIABLE_LENGTH_BLOCK(stream)
-    put_le32(stream, save->priv->file_version);
-    put_le32(stream, save->save_num);
-    put_le16_str(stream, save->player_name);
-    put_le32(stream, save->level);
-    put_le16_str(stream, save->player_location_name);
-    put_le16_str(stream, save->game_time);
-    put_le16_str(stream, save->race_id);
-    put_le16(stream, save->sex);
-    put_lef32(stream, save->current_xp);
-    put_lef32(stream, save->target_xp);
-    put_le64(stream, save->filetime);
-    put_le32(stream, save->snapshot_width);
-    put_le32(stream, save->snapshot_height);
-    if (supports_save_file_compression(save)) {
-        put_le16(stream, save->priv->compressor);
-    }
-    END_VARIABLE_LENGTH_BLOCK(stream)
-
-    /*
-     * Write snapshot.
-     */
-    write_bytes(stream, save->snapshot_data, save->snapshot_size);
-
-    /*
-     * Write the body of the save file. If there is no support for save file
-     * compression, continue writing to this stream directly. Otherwise, we'll
-     * make a temporary stream and write the uncompressed data there. Then we'll
-     * compress to the original stream.
-     */
-    if (!supports_save_file_compression(save)) {
-        return write_save_data(stream, save);
-    }
-
-    struct chunk *uncompressed, *compressed;
-    long start_of_save_data, end_of_save_data;
-    long save_data_size;
-    ssize_t compress_rc;
-    FILE *temp_stream;
-
-    /* Get the starting point for data size calculation. */
-    start_of_save_data = ftell(stream);
-
-    if (start_of_save_data == -1) {
-        perror("ftell");
-        return CG_FTELL;
-    }
-
-    /* Open a stream to write the uncompressed save data. */
-    temp_stream = tmpfile();
-
-    if(!temp_stream) {
-        perror("tmpfile");
-        return CG_TMPFILE;
-    }
-
-    /*
-     * To preserve file offsets, go to the same position as the
-     * original stream is at.
-     */
-    if (fseek(temp_stream, start_of_save_data, SEEK_SET) == -1) {
-        perror("fseek");
-        fclose(temp_stream);
-        return CG_FSEEK;
-    }
-
-    /* Write uncompressed save data. */
-    err = write_save_data(temp_stream, save);
-
-    if (err) {
-        fclose(temp_stream);
-        return err;
-    }
-
-    /* Get end position for data size calculation. */
-    end_of_save_data = ftell(temp_stream);
-
-    if (end_of_save_data == -1) {
-        perror("ftell");
-        fclose(temp_stream);
-        return CG_FTELL;
-    }
-
-    save_data_size = end_of_save_data - start_of_save_data;
-
-    /* Prepare to read the save data we just wrote. */
-    if (fseek(temp_stream, start_of_save_data, SEEK_SET) == -1) {
-        perror("fseek");
-        fclose(temp_stream);
-        return CG_FSEEK;
-    }
-
-    /*
-     * Allocate buffers for compression.
-     */
-    uncompressed = chunk_alloc(save_data_size);
-    compressed   = chunk_alloc(save_data_size);
-
-    if (!uncompressed || !compressed) {
-        free(compressed);
-        free(uncompressed);
-        fclose(temp_stream);
-        return CG_NO_MEM;
-    }
-
-    /* Read the save data. */
-    if (read_full_region(temp_stream, as_region(uncompressed)) != CG_OK) {
-        free(compressed);
-        free(uncompressed);
-        fclose(temp_stream);
-        return CG_EOF;
-    }
-
-    dump_to_file("uncompressed_save_data_w", as_cregion(uncompressed), start_of_save_data);
-
-    (void) fclose(temp_stream);
-
-    /*
-     * Compress.
-     */
-    switch (save->priv->compressor) {
-    case NO_COMPRESSION:
-        compress_rc = uncompressed->size;
-        SWAP(compressed, uncompressed);
-        break;
-
-    case LZ4:
-        compress_rc = lz4_compress(as_cregion(uncompressed), as_region(compressed));
-        break;
-
-    case ZLIB:
-        compress_rc = zlib_compress(as_cregion(uncompressed), as_region(compressed));
-        break;
-
-    default:
-        BUG("invalid compressor");
-        abort();
-    }
-
-    free(uncompressed);
-
-    if (compress_rc == -1) {
-        free(compressed);
-        return CG_CORRUPT;
-    }
-
-    struct cregion cr_compressed = make_cregion(compressed->data, compress_rc);
-
-    DEBUG_LOG("save data length information begins at 0x%08lx\n", ftell(stream));
-
-    put_le32(stream, save_data_size); /* uncompressed size */
-    put_le32(stream, cr_compressed.size);
-
-    if (write_full_region(stream, cr_compressed) != CG_OK) {
-        err = CG_EOF;
-    }
-
-    free(compressed);
-
-    return err;
-}
-
-int cengine_savefile_write(const char *filename, const struct savegame *savegame)
-{
-    FILE *stream;
-    cg_err_t err;
-
-    /* savegame should have been initialized correctly. */
-    assert(savegame->priv != NULL);
-
-    stream = fopen(filename, "wb");
-
-    if (!stream) {
-        perror("fopen");
-        return -1;
-    }
-
-    err = write_save_file(stream, savegame);
-
-    if (fclose(stream) == EOF) {
-        perror("fclose");
-        return -1;
-    }
-
-    return err == CG_OK ? 0 : -1;
-}
-
-#if 0
 static off_t get_file_size(int fd)
 {
     struct stat statbuf;
@@ -1888,7 +755,1400 @@ static void *mmap_entire_file_r(const char *filename, size_t *pfsize)
     *pfsize = fsize;
     return fcontents;
 }
-#endif
+
+struct savegame *cengine_savefile_read(const char *filename)
+{
+    struct savegame *save;
+    size_t file_size = 0;
+    cg_err_t err;
+    char *file;
+
+    file = mmap_entire_file_r(filename, &file_size);
+    if (!file) {
+        perror("mmap");
+        return NULL;
+    }
+
+    if ((save = savegame_alloc()) == NULL) {
+        munmap(file, file_size);
+        return NULL;
+    }
+
+    DEBUG_LOG("Reading save file %s\n", filename);
+
+    err = file_reader(file, file_size, save);
+    switch (err) {
+    case CG_UNSUPPORTED:
+        eprintf("File cannot be read because its format is unsupported.\n");
+        break;
+    case CG_EOF:
+        eprintf("File ended too soon. Is the save corrupt?\n");
+        break;
+    case CG_NO_MEM:
+        eprintf("Failed to allocate memory.\n");
+        break;
+    case CG_OK:
+        /* No error. */
+        break;
+    }
+
+    munmap(file, file_size);
+
+    if (err) {
+        DEBUG_LOG("Error %d occurred while reading save file\n", err);
+        savegame_free(save);
+        return NULL;
+    }
+
+    return save;
+}
+
+static cg_err_t file_reader(const char *file, size_t file_size, struct savegame *save)
+{
+    struct location_table locations;
+    struct chunk *buffers[1] = {0};
+    struct cursor file_cursor;
+    struct cursor body_cursor;
+    struct cursor *cursor;
+    intptr_t offset_var = (intptr_t)file;
+    cg_err_t err = CG_OK;
+
+    union {
+        struct block simple;
+        struct block_change_form chfo;
+        struct block_global_data glda;
+    } block_buf = {0};
+    struct block *block = &block_buf.simple;
+
+    if (file_size < 300) {
+        return CG_CORRUPT;
+    }
+
+    file_cursor.pos = (char *) file;
+    file_cursor.n = file_size;
+    cursor = &file_cursor;
+
+    /* Calculates current file offset at cursor position. */
+    #define OFFSET() ((unsigned long)((intptr_t)cursor->pos - offset_var))
+
+    /*
+     * Check the file signature.
+     */
+    {
+        if (!memcmp(file, TESV_SIGNATURE, strlen(TESV_SIGNATURE))) {
+            DEBUG_LOG("TESV file signature detected\n");
+            save->game = SKYRIM;
+            c_advance(cursor, strlen(TESV_SIGNATURE));
+        }
+        else if(!memcmp(file, FO4_SIGNATURE, strlen(FO4_SIGNATURE))) {
+            DEBUG_LOG("Fallout 4 file signature detected\n");
+            save->game = FALLOUT4;
+            c_advance(cursor, strlen(FO4_SIGNATURE));
+            //return CG_UNSUPPORTED;
+        }
+        else {
+            DEBUG_LOG("File not recognized\n");
+            err = CG_UNSUPPORTED;
+            goto out_error;
+        }
+    }
+
+    /*
+     * Read the file header.
+     */
+    DEBUG_LOG("0x%08lx: Reading file header\n", OFFSET());
+    block->block_type = BLOCK_SIMPLE;
+    err = disassembler(block, cursor);
+    if (err) {
+        goto out_error;
+    }
+    err = deserializer(block, save, OBJECT_FILE_HEADER);
+    if (err) {
+        goto out_error;
+    }
+
+    DEBUG_LOG("File version: %u\n", save->priv->file_version);
+    if (save->priv->file_version > 15) {
+        err = CG_UNSUPPORTED;
+        goto out_error;
+    }
+
+    /*
+     * Read the snapshot.
+     */
+    save->snapshot_bytes_per_pixel = snapshot_pixel_width(save);
+    save->snapshot_size = save->snapshot_width * save->snapshot_height *
+                          save->snapshot_bytes_per_pixel;
+    save->snapshot_data = malloc(save->snapshot_size);
+    if (!save->snapshot_data) {
+        err = CG_NO_MEM;
+        goto out_error;
+    }
+
+    DEBUG_LOG("0x%08lx: Reading %u bytes of snapshot data\n", OFFSET(), save->snapshot_size);
+
+    c_load_bytes(cursor, save->snapshot_data, save->snapshot_size);
+
+    /* Initialize body cursor. */
+    if (supports_save_file_compression(save)) {
+        ssize_t uncompress_size;
+        ssize_t compress_size;
+
+        uncompress_size = c_load_le32_or0(cursor);
+        compress_size = c_load_le32_or0(cursor);
+        if (cursor->n < 0) {
+            err = CG_EOF;
+            goto out_error;
+        }
+
+        DEBUG_LOG("Save data uncompressed length: %zd\n", uncompress_size);
+        DEBUG_LOG("Save data compressed length:   %zd\n", compress_size);
+
+        if (save->priv->compressor != NO_COMPRESSION) {
+            decompress_fn_t decompress = NULL;
+            ssize_t decompress_size = 0;
+
+            /* Allocate space for decompression. */
+            buffers[0] = chunk_alloc(uncompress_size);
+            if (!buffers[0]) {
+                err = CG_NO_MEM;
+                goto out_error;
+            }
+
+            /* Select decompress method. */
+            switch (save->priv->compressor) {
+            case LZ4:
+                decompress = lz4_decompress;
+                break;
+            case ZLIB:
+                decompress = zlib_decompress;
+                break;
+            case NO_COMPRESSION:
+                abort();
+                break;
+            }
+
+            /* Decompress. */
+            struct cregion src = make_cregion(cursor->pos, compress_size);
+            struct region dest = make_region(buffers[0]->data, buffers[0]->size);
+            DEBUG_LOG("Decompressing save data\n");
+            decompress_size = decompress(src, dest);
+            if (decompress_size == -1) {
+                err = CG_COMPRESS;
+                goto out_error;
+            }
+
+            DEBUG_LOG("Dumping decompressed save data\n");
+            dump_to_file("decompressed_save_data", as_cregion(dest), OFFSET());
+
+            body_cursor.pos = dest.data;
+            body_cursor.n = decompress_size;
+            offset_var = (intptr_t)body_cursor.pos - (file_cursor.pos - file);
+        }
+        else {
+            /* 
+             * No compression required. We will directly write to file, but
+             * need to leave 8 bytes of space to store size information.
+             */
+            c_advance2(&body_cursor, &file_cursor, 8);
+            offset_var += 8;
+        }
+    }
+    else {
+        /*
+         * Game engine doesn't support compression for the save file.
+         * We will continue reading where we left off.
+         */
+        c_advance2(&body_cursor, &file_cursor, 0);
+    }
+
+    cursor = &body_cursor;
+
+    DEBUG_LOG("0x%08lx: Save data begins\n", OFFSET());
+
+    if (!c_load_u8(cursor, &save->priv->form_version)) {
+        err = CG_EOF;
+        goto out_error;
+    }
+
+    DEBUG_LOG("Save data form version: %u\n", save->priv->form_version);
+
+    if (save->game == FALLOUT4) {
+        err = c_load_le16_str(cursor, &save->game_version);
+        if (err) {
+            goto out_error;
+        }
+    }
+
+    /*
+     * Read plugin information.
+     */
+    block->block_type = BLOCK_SIMPLE;
+    err = disassembler(block, cursor);
+    if (err) {
+        goto out_error;
+    }
+    err = deserializer(block, save, OBJECT_PLUGIN_INFO);
+    if (err) {
+        goto out_error;
+    }
+
+    /*
+     * Read location table.
+     */
+    DEBUG_LOG("0x%08lx: Reading locations table\n", OFFSET());
+    locations.off_form_ids_count = c_load_le32_or0(cursor);
+    locations.off_unknown_table = c_load_le32_or0(cursor);
+    locations.off_globals1 = c_load_le32_or0(cursor);
+    locations.off_globals2 = c_load_le32_or0(cursor);
+    locations.off_change_forms = c_load_le32_or0(cursor);
+    locations.off_globals3 = c_load_le32_or0(cursor);
+    locations.num_globals1 = c_load_le32_or0(cursor);
+    locations.num_globals2 = c_load_le32_or0(cursor);
+    locations.num_globals3 = c_load_le32_or0(cursor);
+    locations.num_change_forms = c_load_le32_or0(cursor);
+    c_advance(cursor, 60); /* Skip junk. */
+
+    locations.num_globals3 += 1; /* Count is bugged and short by 1. */
+    print_locations_table(&locations);
+
+    save->priv->n_change_forms = locations.num_change_forms;
+
+    /*
+     * Read global data table 1 and 2.
+     */
+    DEBUG_LOG("0x%08lx: Reading global data table 1 and 2\n", OFFSET());
+
+    block->block_type = BLOCK_GLOBAL_DATA;
+    for(unsigned i = 0; i < locations.num_globals1+locations.num_globals2; ++i) {
+        struct block_global_data *glda = (struct block_global_data *) block;
+        int object_type;
+
+        err = disassembler(block, cursor);
+        if (err) {
+            goto out_error;
+        }
+
+        object_type = object_type_from_glda_type_number(glda->type_num);
+        if (object_type == -1) {
+            /* Invalid type number. */
+            err = CG_CORRUPT;
+            goto out_error;
+        }
+
+        err = deserializer(block, save, object_type);
+        if (err) {
+            goto out_error;
+        }
+    }
+
+    /*
+     * Read change forms.
+     */
+    save->priv->change_forms = calloc(locations.num_change_forms, sizeof(*save->priv->change_forms));
+    if (!save->priv->change_forms) {
+        err = CG_NO_MEM;
+        goto out_error;
+    }
+
+    DEBUG_LOG("0x%08lx: Reading %u change forms\n", OFFSET(), locations.num_change_forms);
+
+    block->block_type = BLOCK_CHANGE_FORM;
+    for (unsigned i = 0; i < locations.num_change_forms; ++i) {
+        struct change_form *cf = &save->priv->change_forms[i];
+
+        err = disassembler(block, cursor);
+        if (err) {
+            goto out_error;
+        }
+
+        cf->flags = block_buf.chfo.flags;
+        cf->form_id = block_buf.chfo.form_id;
+        cf->version = block_buf.chfo.version;
+        cf->type = block_buf.chfo.type_num;
+        cf->length1 = block->size;
+        cf->length2 = block->uncompressed_size;
+        cf->data = malloc(block->size);
+        if (!cf->data) {
+            err = CG_NO_MEM;
+            goto out_error;
+        }
+
+        memcpy(cf->data, block->buffer, block->size);
+    }
+
+    /*
+     * Read global data table 3.
+     */
+    DEBUG_LOG("0x%08lx: Reading global data table 3\n", OFFSET());
+
+    block->block_type = BLOCK_GLOBAL_DATA;
+    for(unsigned i = 0; i < locations.num_globals3; ++i) {
+        struct block_global_data *glda = (struct block_global_data *) block;
+        int object_type;
+
+        err = disassembler(block, cursor);
+        if (err) {
+            goto out_error;
+        }
+
+        object_type = object_type_from_glda_type_number(glda->type_num);
+        if (object_type == -1) {
+            /* Invalid type number. */
+            err = CG_CORRUPT;
+            goto out_error;
+        }
+
+        err = deserializer(block, save, object_type);
+        if (err) {
+            goto out_error;
+        }
+    }
+
+    /*
+     * Read form IDs.
+     */
+    DEBUG_LOG("0x%08lx: Reading %u form IDs\n", OFFSET(), save->num_form_ids);
+    if (!c_load_le32(cursor, &save->num_form_ids)) {
+        err = CG_EOF;
+        goto out_error;
+    }
+
+    save->form_ids = calloc(save->num_form_ids, sizeof(*save->form_ids));
+    if (!save->form_ids) {
+        err = CG_NO_MEM;
+        goto out_error;
+    }
+
+    for (uint32_t i = 0; i < save->num_form_ids; ++i)
+        c_load_le32(cursor, &save->form_ids[i]);
+
+    /*
+     * Read world spaces.
+     */
+    DEBUG_LOG("0x%08lx: Reading %u world spaces\n", OFFSET(), save->num_world_spaces);
+    if (!c_load_le32(cursor, &save->num_world_spaces)) {
+        return CG_EOF;
+    }
+
+    save->world_spaces = calloc(save->num_world_spaces, sizeof(*save->world_spaces));
+    if (!save->world_spaces) {
+        err = CG_NO_MEM;
+        goto out_error;
+    }
+
+    for (uint32_t i = 0; i < save->num_world_spaces; ++i)
+        c_load_le32(cursor, &save->world_spaces[i]);
+
+    /*
+     * Read the unknown chunk at the end of the savefile.
+     */
+    {
+        uint32_t size;
+
+        DEBUG_LOG("0x%08lx: Reading unknown table\n", OFFSET());
+
+        if (!c_load_le32(cursor, &size)) {
+            err = CG_EOF;
+            goto out_error;
+        }
+
+        err = alloc_and_read_chunk(cursor, &save->priv->unknown3, size);
+        if (err) {
+            goto out_error;
+        }
+    }
+
+out_error:
+    for (size_t i = 0; i < ARRAY_LEN(buffers); ++i) {
+        free(buffers[i]);
+    }
+
+    return err;
+#undef OFFSET
+}
+
+static unsigned block_header_size(const struct block *block)
+{
+    struct block_change_form *cf;
+
+    switch (block->block_type) {
+    case BLOCK_SIMPLE:
+        return 4;
+    case BLOCK_GLOBAL_DATA:
+        return 8;
+    case BLOCK_CHANGE_FORM:
+        cf = (struct block_change_form *) block;
+        return 9 + (2 << ((cf->type_num >> 6) & 0x3));
+    }
+
+    return 0;
+}
+
+static cg_err_t disassembler(struct block *block, struct cursor *cursor)
+{
+    struct block_change_form *cf;
+
+    switch (block->block_type) {
+    case BLOCK_GLOBAL_DATA:
+        ((struct block_global_data *)block)->type_num = c_load_le32_or0(cursor);
+        /* fallthrough */
+    case BLOCK_SIMPLE:
+        block->size = c_load_le32_or0(cursor);
+        break;
+
+    case BLOCK_CHANGE_FORM:
+        cf = (struct block_change_form *) block;
+        cf->form_id = c_load_be24_or0(cursor);
+        cf->flags = c_load_le32_or0(cursor);
+        cf->type_num = c_load_u8_or0(cursor);
+        cf->version = c_load_u8_or0(cursor);
+        if (cursor->n < 0) {
+            break;
+        }
+
+        /* 
+         * Two upper bits of type determine the sizes of size information.
+         */
+        switch ((cf->type_num >> 6) & 0x3) {
+        case 0:
+            block->size = c_load_u8_or0(cursor);
+            block->uncompressed_size = c_load_u8_or0(cursor);
+            break;
+        case 1:
+            block->size = c_load_le16_or0(cursor);
+            block->uncompressed_size = c_load_le16_or0(cursor);
+            break;
+        case 2:
+            block->size = c_load_le32_or0(cursor);
+            block->uncompressed_size = c_load_le32_or0(cursor);
+            break;
+        default:
+            return CG_CORRUPT;
+        }
+        break;
+    }
+    
+    /* Unless readed header successfully and block is completely in buffer: */
+    if (cursor->n < (long)block->size) {
+        /* Bug or corrupt. */
+        return CG_EOF;
+    }
+
+    block->buffer = cursor->pos;
+    block->buffer_size = cursor->n;
+    c_advance(cursor, block->size);
+
+    return CG_OK;
+}
+
+static cg_err_t decompressor(struct block *block, void *buffer,
+        size_t buffer_size, enum compressor compressor_type)
+{
+    decompress_fn_t decompress;
+    ssize_t decompress_size;
+
+    switch (compressor_type) {
+    case LZ4:
+        decompress = lz4_decompress;
+        break;
+    case ZLIB:
+        decompress = zlib_decompress;
+        break;
+    default:
+        return CG_INVAL;
+    }
+
+    decompress_size = decompress(as_cregion(block), make_region(buffer, buffer_size));
+    if (decompress_size == -1) {
+        /* Buffer too small? */
+        return CG_COMPRESS;
+    }
+
+    /* Update values. */
+    block->uncompressed_size = 0;
+    block->size = decompress_size;
+    block->buffer_size = buffer_size;
+    block->buffer = buffer;
+
+    return CG_OK;
+}
+
+static cg_err_t
+deserializer(struct block *block, struct savegame *save, enum object_type object_type)
+{
+    struct cursor *cursor = (struct cursor[]) {{
+        block->buffer,
+        block->size
+    }};
+    cg_err_t err = CG_OK;
+
+    switch (object_type) {
+    case OBJECT_FILE_HEADER:
+        if (!c_load_le32(cursor, &save->priv->file_version)) {
+            err = CG_EOF;
+            break;
+        }
+
+        save->save_num = c_load_le32_or0(cursor);
+        err = c_load_le16_str(cursor, &save->player_name);
+        if (err) break;
+        save->level = c_load_le32_or0(cursor);
+        err = c_load_le16_str(cursor, &save->player_location_name);
+        if (err) break;
+        err = c_load_le16_str(cursor, &save->game_time);
+        if (err) break;
+        err = c_load_le16_str(cursor, &save->race_id);
+        if (err) break;
+        save->sex = c_load_le16_or0(cursor);
+        save->current_xp = c_load_lef32_or0(cursor);
+        save->target_xp = c_load_lef32_or0(cursor);
+        save->filetime = c_load_le64_or0(cursor);
+        save->snapshot_width = c_load_le32_or0(cursor);
+        save->snapshot_height = c_load_le32_or0(cursor);
+
+        if (supports_save_file_compression(save)) {
+            /*
+             * Read compression type and validate it.
+             */
+            uint16_t compression_type;
+
+            if (!c_load_le16(cursor, &compression_type)) {
+                err = CG_EOF;
+                break;
+            }
+
+            if (!(compression_type <= 2)) {
+                DEBUG_LOG("Read an invalid compression type: %u\n", compression_type);
+                err = CG_CORRUPT;
+                break;
+            }
+
+            save->priv->compressor = compression_type;
+
+            DEBUG_LOG("Save file compression algorithm = %s.\n",
+                      compression_type == LZ4 ? "lz4" :
+                      compression_type == ZLIB ? "zlib" : "none");
+        }
+        else {
+            DEBUG_LOG("No save file compression support\n");
+        }
+        break;
+
+    case OBJECT_PLUGIN_INFO:
+        /* Regular plugins. */
+        if (!c_load_u8(cursor, &save->num_plugins)) {
+            err = CG_EOF;
+            break;
+        }
+
+        save->plugins = calloc(save->num_plugins, sizeof(*save->plugins));
+        if (!save->plugins) {
+            err = CG_NO_MEM;
+            break;
+        }
+
+        err = read_le16_str_array(cursor, save->plugins, save->num_plugins);
+        if (err) {
+            break;
+        }
+
+        /* Light plugins. */
+        if (supports_light_plugins(save)) {
+            if (!c_load_le16(cursor, &save->num_light_plugins)) {
+                err = CG_EOF;
+                break;
+            }
+
+            save->light_plugins = calloc(save->num_light_plugins, sizeof(*save->light_plugins));
+            if (!save->light_plugins) {
+                err = CG_NO_MEM;
+                break;
+            }
+
+            err = read_le16_str_array(cursor, save->light_plugins, save->num_light_plugins);
+        }
+        break;
+
+    case OBJECT_GLDA_MISC_STATS:
+        save->num_misc_stats = c_load_le32_or0(cursor);
+        if (save->num_misc_stats == 0) {
+            break;
+        }
+
+        save->misc_stats = calloc(save->num_misc_stats, sizeof(*save->misc_stats));
+        if (!save->misc_stats) {
+            err = CG_NO_MEM;
+            break;
+        }
+
+        for (uint32_t i = 0u; i < save->num_misc_stats; ++i) {
+            err = c_load_le16_str(cursor, &save->misc_stats[i].name);
+            if (err) {
+                break;
+            }
+
+            save->misc_stats[i].category = c_load_u8_or0(cursor);
+            save->misc_stats[i].value    = c_load_le32_or0(cursor);
+        }
+        break;
+
+    case OBJECT_GLDA_PLAYER_LOCATION:
+        save->player_location.next_object_id = c_load_le32_or0(cursor);
+        save->player_location.world_space1   = c_load_be24_or0(cursor);
+        save->player_location.coord_x        = (int32_t)c_load_le32_or0(cursor);
+        save->player_location.coord_y        = (int32_t)c_load_le32_or0(cursor);
+        save->player_location.world_space2   = c_load_be24_or0(cursor);
+        save->player_location.pos_x          = c_load_lef32_or0(cursor);
+        save->player_location.pos_y          = c_load_lef32_or0(cursor);
+        save->player_location.pos_z          = c_load_lef32_or0(cursor);
+        if (save->game == SKYRIM) {
+            save->player_location.unknown    = c_load_u8_or0(cursor); /* Skyrim only */
+        }
+        break;
+
+    case OBJECT_GLDA_GLOBAL_VARIABLES:
+        err = decode_vsval(cursor, &save->num_global_vars);
+        if (err || save->num_global_vars == 0) {
+            break;
+        }
+
+        save->global_vars = calloc(save->num_global_vars, sizeof(*save->global_vars));
+        if (!save->global_vars) {
+            err = CG_NO_MEM;
+            break;
+        }
+
+        for (uint32_t i = 0u; i < save->num_global_vars; ++i) {
+            save->global_vars[i].form_id = c_load_be24_or0(cursor);
+            save->global_vars[i].value   = c_load_lef32_or0(cursor);
+        }
+        break;
+
+    case OBJECT_GLDA_WEATHER:
+        save->weather.climate      = c_load_be24_or0(cursor);
+        save->weather.weather      = c_load_be24_or0(cursor);
+        save->weather.prev_weather = c_load_be24_or0(cursor);
+        save->weather.unk_weather1 = c_load_be24_or0(cursor);
+        save->weather.unk_weather2 = c_load_be24_or0(cursor);
+        save->weather.regn_weather = c_load_be24_or0(cursor);
+        save->weather.current_time = c_load_lef32_or0(cursor);
+        save->weather.begin_time   = c_load_lef32_or0(cursor);
+        save->weather.weather_pct  = c_load_lef32_or0(cursor);
+        for (size_t i = 0u; i < 6; ++i)
+            save->weather.data1[i] = c_load_le32_or0(cursor);
+        save->weather.data2        = c_load_lef32_or0(cursor);
+        save->weather.data3        = c_load_le32_or0(cursor);
+        save->weather.flags        = c_load_u8_or0(cursor);
+
+        /* Read the remaining bytes. Don't know what they are. */
+        if (cursor->n > 0) {
+            save->weather.data4 = chunk_alloc(cursor->n);
+            if (!save->weather.data4) {
+                err = CG_NO_MEM;
+                break;
+            }
+            c_load_bytes(cursor, save->weather.data4->data, save->weather.data4->size);
+        }
+        break;
+
+    case OBJECT_GLDA_MAGIC_FAVORITES:
+        err = decode_vsval(cursor, &save->num_favourites);
+        if (err) {
+            break;
+        }
+
+        save->favourites = calloc(save->num_favourites, sizeof(*save->favourites));
+        if (!save->favourites) {
+            err = CG_NO_MEM;
+            break;
+        }
+
+        for (uint32_t i = 0; i < save->num_favourites; ++i) {
+            save->favourites[i] = c_load_be24_or0(cursor);
+        }
+
+        err = decode_vsval(cursor, &save->num_hotkeys);
+        if (err) {
+            break;
+        }
+
+        save->hotkeys = calloc(save->num_hotkeys, sizeof(*save->hotkeys));
+        if (!save->hotkeys) {
+            err = CG_NO_MEM;
+            break;
+        }
+
+        for (uint32_t i = 0; i < save->num_hotkeys; ++i) {
+            save->hotkeys[i] = c_load_be24_or0(cursor);
+        }
+        break;
+
+    case OBJECT_GLDA_GAME:
+    case OBJECT_GLDA_CREATED_OBJECTS:
+    case OBJECT_GLDA_EFFECTS:
+    case OBJECT_GLDA_AUDIO:
+    case OBJECT_GLDA_SKY_CELLS:
+    case OBJECT_GLDA_9:
+    case OBJECT_GLDA_10:
+    case OBJECT_GLDA_11:
+    case OBJECT_GLDA_PROCESS_LISTS:
+    case OBJECT_GLDA_COMBAT:
+    case OBJECT_GLDA_INTERFACE:
+    case OBJECT_GLDA_ACTOR_CAUSES:
+    case OBJECT_GLDA_104:
+    case OBJECT_GLDA_DETECTION_MANAGER:
+    case OBJECT_GLDA_LOCATION_METADATA:
+    case OBJECT_GLDA_QUEST_STATIC_DATA:
+    case OBJECT_GLDA_STORYTELLER:
+    case OBJECT_GLDA_PLAYER_CONTROLS:
+    case OBJECT_GLDA_STORY_EVENT_MANAGER:
+    case OBJECT_GLDA_INGREDIENT_SHARED:
+    case OBJECT_GLDA_MENU_CONTROLS:
+    case OBJECT_GLDA_MENU_TOPIC_MANAGER:
+    case OBJECT_GLDA_115:
+    case OBJECT_GLDA_116:
+    case OBJECT_GLDA_117:
+    case OBJECT_GLDA_TEMP_EFFECTS:
+    case OBJECT_GLDA_PAPYRUS:
+    case OBJECT_GLDA_ANIM_OBJECTS:
+    case OBJECT_GLDA_TIMER:
+    case OBJECT_GLDA_SYNCHRONISED_ANIMS:
+    case OBJECT_GLDA_MAIN:
+    case OBJECT_GLDA_1006:
+    case OBJECT_GLDA_1007:
+        {
+            /*
+             * Read an unknown global data structure.
+             */
+            struct chunk **slot;
+
+            slot = &save->priv->globals[object_type - FIRST_OBJECT_GLDA];
+
+            if (*slot != NULL) {
+                eprintf("encountered multiple global data of type %u\n", object_type);
+                err = CG_CORRUPT;
+                break;
+            }
+
+            err = alloc_and_read_chunk(cursor, slot, cursor->n);
+            break;
+        }
+
+    default:
+        break;
+    }
+
+    if (cursor->n < 0) {
+        /* Bug or corrupt. */
+        DEBUG_LOG("CG_EOF while deserializing object type %d. "
+                "cursor->n = %lld\n",
+                (int)object_type, cursor->n);
+        return CG_EOF;
+    }
+
+    return err;
+}
+
+static void prepare_block(struct block *block, struct cursor *cursor)
+{
+    unsigned header_size = block_header_size(block);
+    block->buffer = cursor->pos + header_size;
+    block->buffer_size = cursor->n - header_size;
+}
+
+static cg_err_t
+serializer(struct block *block, const struct savegame *save, enum object_type object_type)
+{
+    struct cursor *cursor = (struct cursor[]) {{
+        block->buffer,
+        block->buffer_size
+    }};
+    cg_err_t err = CG_OK;
+
+    switch (object_type) {
+    case OBJECT_FILE_HEADER:
+        c_store_le32(cursor, save->priv->file_version);
+        c_store_le32(cursor, save->save_num);
+        c_store_le16_str(cursor, save->player_name);
+        c_store_le32(cursor, save->level);
+        c_store_le16_str(cursor, save->player_location_name);
+        c_store_le16_str(cursor, save->game_time);
+        c_store_le16_str(cursor, save->race_id);
+        c_store_le16(cursor, save->sex);
+        c_store_lef32(cursor, save->current_xp);
+        c_store_lef32(cursor, save->target_xp);
+        c_store_le64(cursor, save->filetime);
+        c_store_le32(cursor, save->snapshot_width);
+        c_store_le32(cursor, save->snapshot_height);
+        if (supports_save_file_compression(save)) {
+            c_store_le16(cursor, save->priv->compressor);
+        }
+        break;
+
+    case OBJECT_PLUGIN_INFO:
+        c_store_u8(cursor, save->num_plugins);
+        for (uint32_t i = 0; i < save->num_plugins; ++i) {
+            c_store_le16_str(cursor, save->plugins[i]);
+        }
+
+        if (supports_light_plugins(save)) {
+            c_store_le16(cursor, save->num_light_plugins);
+            for (uint32_t i = 0; i < save->num_light_plugins; ++i) {
+                c_store_le16_str(cursor, save->light_plugins[i]);
+            }
+        }
+        break;
+
+    case OBJECT_GLDA_MISC_STATS:
+        c_store_le32(cursor, save->num_misc_stats);
+        for (uint32_t i = 0u; i < save->num_misc_stats; ++i) {
+            c_store_le16_str(cursor, save->misc_stats[i].name);
+            c_store_u8(cursor,       save->misc_stats[i].category);
+            c_store_le32(cursor,     save->misc_stats[i].value);
+        }
+        break;
+
+    case OBJECT_GLDA_PLAYER_LOCATION:
+        c_store_le32(cursor, save->player_location.next_object_id);
+        c_store_be24(cursor, save->player_location.world_space1);
+        c_store_le32(cursor, save->player_location.coord_x);
+        c_store_le32(cursor, save->player_location.coord_y);
+        c_store_be24(cursor, save->player_location.world_space2);
+        c_store_lef32(cursor, save->player_location.pos_x);
+        c_store_lef32(cursor, save->player_location.pos_y);
+        c_store_lef32(cursor, save->player_location.pos_z);
+        c_store_u8(cursor, save->player_location.unknown); /* Present in Skyrim savefiles. */
+        break;
+
+    case OBJECT_GLDA_GLOBAL_VARIABLES:
+        encode_vsval(cursor, save->num_global_vars);
+        for (uint32_t i = 0u; i < save->num_global_vars; ++i) {
+            c_store_be24(cursor, save->global_vars[i].form_id);
+            c_store_lef32(cursor, save->global_vars[i].value);
+        }
+        break;
+
+    case OBJECT_GLDA_WEATHER:
+        c_store_be24(cursor, save->weather.climate);
+        c_store_be24(cursor, save->weather.weather);
+        c_store_be24(cursor, save->weather.prev_weather);
+        c_store_be24(cursor, save->weather.unk_weather1);
+        c_store_be24(cursor, save->weather.unk_weather2);
+        c_store_be24(cursor, save->weather.regn_weather);
+        c_store_lef32(cursor, save->weather.current_time);
+        c_store_lef32(cursor, save->weather.begin_time);
+        c_store_lef32(cursor, save->weather.weather_pct);
+        for (int i = 0; i < 6; ++i)
+            c_store_le32(cursor, save->weather.data1[i]);
+        c_store_lef32(cursor, save->weather.data2);
+        c_store_le32(cursor, save->weather.data3);
+        c_store_u8(cursor, save->weather.flags);
+        if (save->weather.data4)
+            c_store_bytes(cursor, save->weather.data4->data, save->weather.data4->size);
+        break;
+
+    case OBJECT_GLDA_MAGIC_FAVORITES:
+        encode_vsval(cursor, save->num_favourites);
+        for (uint32_t i = 0u; i < save->num_favourites; ++i) {
+            c_store_be24(cursor, save->favourites[i]);
+        }
+        encode_vsval(cursor, save->num_hotkeys);
+        for (uint32_t i = 0u; i < save->num_hotkeys; ++i) {
+            c_store_be24(cursor, save->hotkeys[i]);
+        }
+        break;
+
+    case OBJECT_GLDA_GAME:
+    case OBJECT_GLDA_CREATED_OBJECTS:
+    case OBJECT_GLDA_EFFECTS:
+    case OBJECT_GLDA_AUDIO:
+    case OBJECT_GLDA_SKY_CELLS:
+    case OBJECT_GLDA_9:
+    case OBJECT_GLDA_10:
+    case OBJECT_GLDA_11:
+    case OBJECT_GLDA_PROCESS_LISTS:
+    case OBJECT_GLDA_COMBAT:
+    case OBJECT_GLDA_INTERFACE:
+    case OBJECT_GLDA_ACTOR_CAUSES:
+    case OBJECT_GLDA_104:
+    case OBJECT_GLDA_DETECTION_MANAGER:
+    case OBJECT_GLDA_LOCATION_METADATA:
+    case OBJECT_GLDA_QUEST_STATIC_DATA:
+    case OBJECT_GLDA_STORYTELLER:
+    case OBJECT_GLDA_PLAYER_CONTROLS:
+    case OBJECT_GLDA_STORY_EVENT_MANAGER:
+    case OBJECT_GLDA_INGREDIENT_SHARED:
+    case OBJECT_GLDA_MENU_CONTROLS:
+    case OBJECT_GLDA_MENU_TOPIC_MANAGER:
+    case OBJECT_GLDA_115:
+    case OBJECT_GLDA_116:
+    case OBJECT_GLDA_117:
+    case OBJECT_GLDA_TEMP_EFFECTS:
+    case OBJECT_GLDA_PAPYRUS:
+    case OBJECT_GLDA_ANIM_OBJECTS:
+    case OBJECT_GLDA_TIMER:
+    case OBJECT_GLDA_SYNCHRONISED_ANIMS:
+    case OBJECT_GLDA_MAIN:
+    case OBJECT_GLDA_1006:
+    case OBJECT_GLDA_1007:
+        {
+            /*
+            * Unknown global data structure.
+            */
+            struct chunk *chunk;
+
+            chunk = save->priv->globals[object_type - FIRST_OBJECT_GLDA];
+
+            if (chunk == NULL) {
+                err = CG_NOT_PRESENT;
+                break;
+            }
+
+            c_store_bytes(cursor, chunk->data, chunk->size);
+            break;
+        }
+    default:
+        err = CG_NOT_PRESENT;
+        break;
+    }
+
+    if (cursor->n < 0) {
+        /* Buffer needs to grow by -cursor->n bytes. */
+        err = CG_EOF;
+    }
+
+    if (err) {
+        DEBUG_LOG("error %d while serializing object type %d\n", err, (int)object_type);
+        return err;
+    }
+
+    block->size = block->buffer_size - cursor->n;
+    block->uncompressed_size = 0;
+    return CG_OK;
+}
+
+static cg_err_t
+compressor(struct block *block, void *buffer, size_t buffer_size, enum compressor compressor_type)
+{
+    compress_fn_t compress;
+    ssize_t compress_size;
+
+    switch (compressor_type) {
+    case LZ4:
+        compress = lz4_compress;
+        break;
+    case ZLIB:
+        compress = zlib_compress;
+        break;
+    case NO_COMPRESSION:
+        return CG_INVAL;
+    }
+
+    compress_size = compress(as_cregion(block), make_region(buffer, buffer_size));
+    if (compress_size == -1) {
+        /* Buffer too small? */
+        return CG_COMPRESS;
+    }
+
+    /* Update values. */
+    block->uncompressed_size = block->size;
+    block->size = compress_size;
+    block->buffer_size = buffer_size;
+    block->buffer = buffer;
+
+    return CG_OK;
+}
+
+static void assembler(const struct block *block, struct cursor *cursor)
+{
+    struct block_change_form *cf;
+
+    /* Cursor must be at the block header. */
+    assert(block->buffer - cursor->pos == block_header_size(block));
+
+    switch (block->block_type) {
+    case BLOCK_GLOBAL_DATA:
+        c_store_le32(cursor, ((struct block_global_data *)block)->type_num);
+        /* fallthrough */
+    case BLOCK_SIMPLE:
+        c_store_le32(cursor, block->size);
+        break;
+
+    case BLOCK_CHANGE_FORM:
+        cf = (struct block_change_form *) block;
+        c_store_be24(cursor, cf->form_id);
+        c_store_le32(cursor, cf->flags);
+        c_store_u8(cursor, cf->type_num);
+        c_store_u8(cursor, cf->version);
+
+        /* Two upper bits of type determine the sizes of length1 and length2. */
+        switch ((cf->type_num >> 6) & 0x3) {
+        case 0:
+            c_store_u8(cursor, block->size);
+            c_store_u8(cursor, block->uncompressed_size);
+            break;
+        case 1:
+            c_store_le16(cursor, block->size);
+            c_store_le16(cursor, block->uncompressed_size);
+            break;
+        case 2:
+            c_store_le32(cursor, block->size);
+            c_store_le32(cursor, block->uncompressed_size);
+            break;
+        default:
+            BUG("Valid length types include uint8, uint16 and uint32.\n");
+        }
+        break;
+    }
+    
+    assert(cursor->pos == block->buffer);
+
+    c_advance(cursor, block->size);
+}
+
+static cg_err_t file_writer(char *file, size_t *file_size_ptr, const struct savegame *save)
+{
+    struct location_table locations = {0};
+    struct chunk *buffers[1] = {0}; /* Buffers for compression. */
+    struct cursor file_cursor;  /* Cursor for additions to file. */
+    struct cursor body_cursor;  /* Cursor for additions to body. */
+    struct cursor *cursor;      /* The cursor being used. */
+    intptr_t offset_var = (intptr_t)file; /* Variable for file offset calculation. */
+    size_t max_file_size;       /* Size of 'file' arg for bounds checking. */
+    char *ptr_to_locations;     /* Points where to write location table. */
+    cg_err_t err = CG_OK;
+
+    max_file_size = *file_size_ptr;
+    file_cursor.pos = file;
+    file_cursor.n = max_file_size;
+    cursor = &file_cursor;
+
+    /* Calculates current file offset at cursor position. */
+    #define OFFSET() ((uint32_t)((intptr_t)cursor->pos - offset_var))
+
+    union {
+        struct block simple;
+        struct block_change_form chfo;
+        struct block_global_data glda;
+    } block_buf = {0};
+    struct block *block = &block_buf.simple;
+
+    /*
+     * Write signature.
+     */
+    {
+        const char *signature = NULL;
+
+        switch (save->game) {
+        case SKYRIM:
+            signature = TESV_SIGNATURE;
+            break;
+        case FALLOUT4:
+            signature = FO4_SIGNATURE;
+            break;
+        }
+
+        c_store_bytes(cursor, signature, strlen(signature));
+    }
+
+    /*
+     * Write the file header.
+     */
+    block->block_type = BLOCK_SIMPLE;
+    prepare_block(block, cursor);
+    err = serializer(block, save, OBJECT_FILE_HEADER);
+    if (err) {
+        goto out_error;
+    }
+    assembler(block, cursor);
+
+    /*
+     * Write snapshot.
+     */
+    c_store_bytes(cursor, save->snapshot_data, save->snapshot_size);
+
+    /* Initialize body cursor. */
+    if (supports_save_file_compression(save)) {
+        if (save->priv->compressor != NO_COMPRESSION) {
+            /*
+             * Compression required => need a buffer to write the body in.
+             * Allocate a buffer for the body and set the body cursor at
+             * the beginning of the buffer.
+             */
+            buffers[0] = chunk_alloc(128 * 1024 * 1024);
+            if (!buffers[0]) {
+                err = CG_NO_MEM;
+                goto out_error;
+            }
+
+            body_cursor.pos = buffers[0]->data;
+            body_cursor.n = buffers[0]->size;
+            offset_var = (intptr_t)body_cursor.pos - (file_cursor.pos - file);
+        }
+        else {
+            /* 
+             * No compression required. We will directly write to file, but
+             * need to leave 8 bytes of space to store size information.
+             */
+            c_advance2(&body_cursor, &file_cursor, 8);
+            offset_var += 8;
+        }
+    }
+    else {
+        /*
+         * Game engine doesn't support compression for the save file.
+         * We will continue writing where we left off.
+         */
+        c_advance2(&body_cursor, &file_cursor, 0);
+    }
+
+    cursor = &body_cursor;
+
+    c_store_u8(cursor, save->priv->form_version);
+    
+    /*
+     * Write game version string.
+     */
+    if (save->game == FALLOUT4) {
+        c_store_le16_str(cursor, save->game_version);
+    }
+
+    /*
+     * Write plugin info.
+     */
+    block->block_type = BLOCK_SIMPLE;
+    prepare_block(block, cursor);
+    err = serializer(block, save, OBJECT_PLUGIN_INFO);
+    if (err) {
+        goto out_error;
+    }
+    assembler(block, cursor);
+
+    /*
+     * Save pointer to file location table.
+     */
+    ptr_to_locations = cursor->pos;
+    c_advance(cursor, LOCATION_TABLE_SIZE);
+
+    /*
+     * Write global data table 1.
+     */
+    locations.off_globals1 = OFFSET();
+    block->block_type = BLOCK_GLOBAL_DATA;
+    for (enum object_type i = FIRST_TABLE1_OBJECT_GLDA; i < FIRST_TABLE2_OBJECT_GLDA; ++i) {
+        block_buf.glda.type_num = glda_type_number(i);
+        prepare_block(block, cursor);
+        err = serializer(block, save, i);
+        if (err && err != CG_NOT_PRESENT) {
+            goto out_error;
+        }
+        if (err != CG_NOT_PRESENT) {
+            assembler(block, cursor);
+            locations.num_globals1++;
+        }
+
+    }
+    err = CG_OK;
+
+    /*
+     * Write global data table 2.
+     */
+    locations.off_globals2 = OFFSET();
+    for (enum object_type i = FIRST_TABLE2_OBJECT_GLDA; i < FIRST_TABLE3_OBJECT_GLDA; ++i) {
+        block_buf.glda.type_num = glda_type_number(i);
+        prepare_block(block, cursor);
+        err = serializer(block, save, i);
+        if (err && err != CG_NOT_PRESENT) {
+            goto out_error;
+        }
+        if (err != CG_NOT_PRESENT) {
+            assembler(block, cursor);
+            locations.num_globals2++;
+        }
+    }
+    err = CG_OK;
+
+    /*
+     * Write change forms.
+     */
+    locations.off_change_forms = OFFSET();
+    block->block_type = BLOCK_CHANGE_FORM;
+    for (unsigned i = 0; i < save->priv->n_change_forms; ++i) {
+        struct change_form *ptr = &save->priv->change_forms[i];
+        /* Already serialized and compressed. */
+        block_buf.chfo.flags = ptr->flags;
+        block_buf.chfo.form_id = ptr->form_id;
+        block_buf.chfo.version = ptr->version;
+        block_buf.chfo.type_num = ptr->type;
+        block->size = ptr->length1;
+        block->uncompressed_size = ptr->length2;
+
+        prepare_block(block, cursor);
+        memcpy(block->buffer, ptr->data, block->size);
+        assembler(block, cursor);
+
+        locations.num_change_forms++;
+    }
+
+    /*
+     * Write global data table 3.
+     */
+    locations.off_globals3 = OFFSET();
+    block->block_type = BLOCK_GLOBAL_DATA;
+    for (enum object_type i = FIRST_TABLE3_OBJECT_GLDA; i <= LAST_OBJECT_GLDA; ++i) {
+        block_buf.glda.type_num = glda_type_number(i);
+        prepare_block(block, cursor);
+        err = serializer(block, save, i);
+        if (err && err != CG_NOT_PRESENT) {
+            goto out_error;
+        }
+        if (err != CG_NOT_PRESENT) {
+            assembler(block, cursor);
+            locations.num_globals3++;
+        }
+    }
+    err = CG_OK;
+
+    /*
+     * Write form IDs.
+     */
+    locations.off_form_ids_count = OFFSET();
+    c_store_le32(cursor, save->num_form_ids);
+    for (uint32_t i = 0; i < save->num_form_ids; ++i) {
+        c_store_le32(cursor, save->form_ids[i]);
+    }
+
+    /*
+     * Write world spaces.
+     */
+    c_store_le32(cursor, save->num_world_spaces);
+    for (uint32_t i = 0; i < save->num_world_spaces; ++i) {
+        c_store_le32(cursor, save->world_spaces[i]);
+    }
+
+    /*
+     * Write unknown table.
+     */
+    locations.off_unknown_table = OFFSET();
+    c_store_le32(cursor, save->priv->unknown3->size);
+    c_store_bytes(cursor, save->priv->unknown3->data, save->priv->unknown3->size);
+    
+    if (cursor->n < 0) {
+        err = CG_EOF;
+        goto out_error;
+    }
+
+    /*
+     * Write locations table.
+     */
+    store_le32(&ptr_to_locations[0], locations.off_form_ids_count);
+    store_le32(&ptr_to_locations[4], locations.off_unknown_table);
+    store_le32(&ptr_to_locations[8], locations.off_globals1);
+    store_le32(&ptr_to_locations[12], locations.off_globals2);
+    store_le32(&ptr_to_locations[16], locations.off_change_forms);
+    store_le32(&ptr_to_locations[20], locations.off_globals3);
+    store_le32(&ptr_to_locations[24], locations.num_globals1);
+    store_le32(&ptr_to_locations[28], locations.num_globals2);
+    /* Subtract by 1: Skyrim doesn't acknowledge the last global data. */
+    store_le32(&ptr_to_locations[32], locations.num_globals3 - 1);
+    store_le32(&ptr_to_locations[36], locations.num_change_forms);
+    print_locations_table(&locations);
+
+    /*
+     * Compress body into the file, if necessary.
+     */
+    cursor = &file_cursor;
+
+    if (supports_save_file_compression(save)) {
+        ssize_t uncompress_size = buffers[0]->size - body_cursor.n;
+        ssize_t compress_size = 0;
+
+        struct cregion src = make_cregion(buffers[0]->data, uncompress_size);
+        struct region dest = make_region(cursor->pos + 8, cursor->n - 8);
+
+        switch (save->priv->compressor) {
+        case LZ4:
+            compress_size = lz4_compress(src, dest);
+            break;
+        case ZLIB:
+            compress_size = zlib_compress(src, dest);
+            break;
+        case NO_COMPRESSION:
+            /* Not sure about this, but needed to correctly advance cursor. */
+            compress_size = uncompress_size;
+            break;
+        }
+
+        if (compress_size == -1) {
+            err = CG_COMPRESS;
+            goto out_error;
+        }
+
+        c_store_le32(cursor, uncompress_size);
+        c_store_le32(cursor, compress_size);
+        c_advance(cursor, compress_size);
+    }
+
+    /* File is now written, give the size to the caller. */
+    *file_size_ptr = max_file_size - file_cursor.n;
+
+out_error:
+    for (size_t i = 0; i < ARRAY_LEN(buffers); ++i) {
+        free(buffers[i]);
+    }
+    return err;
+#undef OFFSET
+}
+
+int cengine_savefile_write(const char *filename, const struct savegame *savegame)
+{
+    size_t max_file_size;
+    size_t file_size;
+    cg_err_t err;
+    void *file;
+    int fd;
+
+    /* savegame should have been initialized correctly. */
+    assert(savegame->priv != NULL);
+
+    fd = open(filename, O_CREAT | O_RDWR | O_TRUNC, 0644);
+    if (fd == -1) {
+        perror("open");
+        return -1;
+    }
+
+    max_file_size = 128 * 1024 * 1024; /* 128 MiB limit. */
+    if (ftruncate(fd, max_file_size) == -1) {
+        perror("ftruncate");
+        close(fd);
+        return -1;
+    }
+
+    file = mmap(NULL, max_file_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (file == MAP_FAILED) {
+        perror("mmap");
+        close(fd);
+        return -1;
+    }
+
+    if (close(fd) == -1) {
+        perror("close");
+    }
+
+    file_size = max_file_size;
+    err = file_writer(file, &file_size, savegame);
+
+    if (munmap(file, max_file_size) == -1) {
+        perror("munmap");
+    }
+
+    if (truncate(filename, file_size) == -1) {
+        perror("truncate");
+    }
+
+    return err == CG_OK ? 0 : -1;
+}
 
 static struct savegame *savegame_alloc(void)
 {
@@ -1952,14 +2212,8 @@ void savegame_free(struct savegame *save)
     free(save->form_ids);
     free(save->world_spaces);
 
-    for (i = 0; i < ARRAY_LEN(private->globals1); ++i) {
-        free(private->globals1[i]);
-    }
-    for (i = 0; i < ARRAY_LEN(private->globals2); ++i) {
-        free(private->globals2[i]);
-    }
-    for (i = 0; i < ARRAY_LEN(private->globals3); ++i) {
-        free(private->globals3[i]);
+    for (i = 0; i < ARRAY_LEN(private->globals); ++i) {
+        free(private->globals[i]);
     }
 
     if (private->change_forms) {

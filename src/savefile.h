@@ -20,6 +20,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdint.h>
 
+struct chunk;
+
 typedef uint32_t ref_t;
 
 enum game {
@@ -73,8 +75,6 @@ struct weather {
      */
     uint8_t flags;
 
-    uint32_t data4_sz;
-
     /*
      * data4: Only present if flags has bit 0 or 1 set.
      *
@@ -104,7 +104,7 @@ struct weather {
      *     uint32 (the very last one, always = 0x1)
      * }
      */
-    unsigned char *data4;
+    struct chunk *data4;
 };
 
 struct player_location {
