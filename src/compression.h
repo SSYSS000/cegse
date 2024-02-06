@@ -22,8 +22,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/types.h>
 #include "mem_types.h"
 
-typedef int (*compress_fn_t)(struct cregion src, struct region dest);
-typedef int (*decompress_fn_t)(struct cregion src, struct region dest);
+typedef ssize_t (*compress_fn_t)(struct cregion src, struct region dest);
+typedef ssize_t (*decompress_fn_t)(struct cregion src, struct region dest);
 
 /*
  * Return compressed size on success or -1 on failure.
