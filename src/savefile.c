@@ -2089,6 +2089,9 @@ static cg_err_t file_writer(char *file, size_t *file_size_ptr, const struct save
         c_store_le32(cursor, compress_size);
         c_advance(cursor, compress_size);
     }
+    else {
+        c_advance2(&file_cursor, &body_cursor, 0);
+    }
 
     /* File is now written, give the size to the caller. */
     *file_size_ptr = max_file_size - file_cursor.n;
