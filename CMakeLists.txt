@@ -34,4 +34,24 @@ add_executable(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME} lz4 z)
 
 include(CTest)
-add_subdirectory(tests)
+
+# Unit test files
+file(GLOB source_files "src/*.c")
+add_library(test_dependencies STATIC ${source_files})
+
+set(unit_test_files
+    src/savefile.c
+    src/binary_stream.c)
+
+foreach(file ${unit_test_files})
+    get_filename_component(target ${file} NAME_WLE)
+    add_executable(${target} ${file})
+    
+    target_compile_definitions(${target} PRIVATE
+        COMPILE_WITH_UNIT_TESTS=1)
+
+    #target_compile_options(${target} PRIVATE -Wno-parentheses)
+    target_link_libraries(${target} test_dependencies lz4 z)
+
+    add_test(NAME ${target} COMMAND ${target})
+endforeach()

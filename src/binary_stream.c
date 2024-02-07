@@ -158,3 +158,37 @@ FOR_PRIMITIVE_TYPES(DEFINE_POINTER_TO_BUF_API)
 FOR_ALL_TYPES(DEFINE_CURSOR_API)
 FOR_ALL_TYPES(DEFINE_FILE_API)
 
+#define TEST_SUITE(TEST_CASE)                           \
+    TEST_CASE(store_load_functions)                     \
+    TEST_CASE(cursor_api)
+
+#include "unit_tests.h"
+
+UNIT_TEST(store_load_functions)
+{
+    char buffer[1024];
+
+    {
+        const char correct_repr[] = {0x12, 0x34, 0x56};
+        store_be24(buffer, 0x123456);
+        ASSERT_EQ_ARR(buffer, correct_repr, 3);
+        ASSERT_EQ(load_be24(buffer), 0x123456);
+    }
+
+    {
+        const char correct_repr[] = {0x00, 0x00, 0x00, 0x40};
+        store_lef32(buffer, 2.0f);
+        ASSERT_EQ_ARR(buffer, correct_repr, 4);
+        ASSERT_EQ(load_lef32(buffer), 2.0f);
+    }
+}
+
+UNIT_TEST(cursor_api)
+{
+    char buffer[1024];
+
+    struct cursor *cursor = (struct cursor[]) {{
+        buffer, sizeof(buffer)
+    }};
+
+}

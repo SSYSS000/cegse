@@ -693,7 +693,7 @@ static cg_err_t alloc_and_read_chunk(struct cursor *cursor, struct chunk **chunk
     return CG_OK;
 }
 
-static void dump_to_file(const char *filename, struct cregion region, long offset)
+static void dump_to_file(const char *filename, const void *data, size_t size, long offset)
 {
     FILE *fp;
 
@@ -706,7 +706,7 @@ static void dump_to_file(const char *filename, struct cregion region, long offse
         fseek(fp, offset, SEEK_SET);
     }
 
-    write_bytes(fp, region.data, region.size);
+    write_bytes(fp, data, size);
     fclose(fp);
 }
 
@@ -939,7 +939,7 @@ static cg_err_t file_reader(const char *file, size_t file_size, struct savegame 
             }
 
             DEBUG_LOG("Dumping decompressed save data\n");
-            dump_to_file("decompressed_save_data", as_cregion(dest), OFFSET());
+            dump_to_file("decompressed_save_data", dest.data, dest.size, OFFSET());
 
             body_cursor.pos = dest.data;
             body_cursor.n = decompress_size;
@@ -2227,4 +2227,78 @@ void savegame_free(struct savegame *save)
     free(private->unknown3);
     free(private);
     free(save);
+}
+
+#define TEST_SUITE(TEST_CASE)           \
+    TEST_CASE(read_and_write_sample_files_back_identically)
+
+#include <dirent.h>
+#include "unit_tests.h"
+
+static void read_and_write_file_back_identically(const char *sample_filename)
+{
+    size_t rewritten_file_size;
+    struct savegame *save;
+    char *rewritten_file;
+    char *sample_file;
+    size_t sample_file_size;
+    cg_err_t err;
+
+    sample_file = mmap_entire_file_r(sample_filename, &sample_file_size);
+    save = savegame_alloc();
+    ASSERT_NOT_NULL(sample_file);
+    ASSERT_NOT_NULL(save);
+
+    err = file_reader(sample_file, sample_file_size, save);
+    ASSERT_EQ(err, CG_OK);
+
+    rewritten_file = malloc(sample_file_size);
+    ASSERT_NOT_NULL(rewritten_file);
+
+    rewritten_file_size = sample_file_size;
+    err = file_writer(rewritten_file, &rewritten_file_size, save);
+    ASSERT_EQ(err, CG_OK);
+
+    if (rewritten_file_size != sample_file_size) {
+        char dump_filename[512] = "./dump_rewritten_file";
+
+        eprintf("Unequal file lengths.\n"
+                "Dump file: %s\n"
+                "Original file: %s\n",
+                dump_filename, sample_filename);
+
+        dump_to_file(dump_filename, rewritten_file, rewritten_file_size, 0);
+
+        /* Generate error. */
+        ASSERT_EQ(rewritten_file_size, sample_file_size);
+    }
+
+    ASSERT_EQ_ARR(sample_file, rewritten_file, sample_file_size);
+
+    munmap(sample_file, sample_file_size);
+    free(rewritten_file);
+}
+
+UNIT_TEST(read_and_write_sample_files_back_identically)
+{
+    struct dirent *dirent;
+    DIR *samples;
+
+    debug_log_file = stderr;
+
+    samples = opendir("../samples");
+    ASSERT_NOT_NULL(samples);
+
+    while ((dirent = readdir(samples)) != NULL) {
+        char sample_filename[512];
+
+        if (dirent->d_type != DT_REG) {
+			continue;
+		}
+
+        sprintf(sample_filename, "../samples/%s", dirent->d_name);
+
+        eprintf("sample file: %s\n", sample_filename);
+        read_and_write_file_back_identically(sample_filename);
+    }
 }
