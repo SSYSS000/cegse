@@ -49,16 +49,16 @@ foreach(file ${unit_test_files})
     get_filename_component(target ${file} NAME_WLE)
     set(target unit_tests_${target})
 
-    # Unit test release build with asserts disabled.
-    set(CMAKE_BUILD_TYPE Release)
     add_executable(${target} ${file})
 
     # To shut GCC up about sign comparison when an operand's type
     # has been acquired by passing an enum constant to typeof().
     target_compile_options(${target} PRIVATE -Wno-sign-compare)
 
-    # Compile with unit test specific code.
-    target_compile_definitions(${target} PRIVATE COMPILE_WITH_UNIT_TESTS=1)
+    # Compile with unit test specific code. Also disable assert().
+    target_compile_definitions(${target} PRIVATE
+        COMPILE_WITH_UNIT_TESTS=1
+        NDEBUG)
 
     target_link_libraries(${target} dependencies lz4 z)
 

@@ -25,12 +25,12 @@ extern FILE *debug_log_file;
 
 void logging(void);
 
-#if !defined(NDEBUG)
+#if !defined(DISABLE_DEBUG_LOG)
 # define DEBUG_LOG(fmt, ...)            \
     if (debug_log_file)                 \
         fprintf(debug_log_file, "%s: " fmt, __func__, ##__VA_ARGS__)
 #else
 # define DEBUG_LOG(...) (void)0
-#endif /* !defined(NDEBUG) */
+#endif /* !defined(DISABLE_DEBUG_LOG) */
 
 #endif /* CEGSE_LOG_H */
