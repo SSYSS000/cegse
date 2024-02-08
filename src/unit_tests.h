@@ -91,7 +91,7 @@ static void ut_error(const char *fmt, ...)
     const char *: "%s",                                 \
     char: "%c",                                         \
     signed char: "%hhd",                                \
-    unsigned char: "%hhu",                              \
+    unsigned char: "0x%hhx",                            \
     short: "%hd",                                       \
     unsigned short: "%hu",                              \
     int: "%d",                                          \
