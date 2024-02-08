@@ -425,7 +425,7 @@ static cg_err_t disassembler(struct block *, struct cursor *);
 
 static void print_locations_table(const struct location_table *t)
 {
-    DEBUG_LOG(
+    DEBUG_LOG("\n"
        "+============================================+\n"
        "|                Location table              |\n"
        "+============================================+\n"
@@ -784,8 +784,20 @@ struct savegame *cengine_savefile_read(const char *filename)
     case CG_EOF:
         eprintf("File ended too soon. Is the save corrupt?\n");
         break;
+    case CG_CORRUPT:
+        eprintf("File may be corrupt.\n");
+        break;
     case CG_NO_MEM:
         eprintf("Failed to allocate memory.\n");
+        break;
+    case CG_COMPRESS:
+        eprintf("Compression error.\n");
+        break;
+    case CG_INVAL:
+        eprintf("Invalid argument.\n");
+        break;
+    case CG_NOT_PRESENT:
+        /* bug */
         break;
     case CG_OK:
         /* No error. */
@@ -1242,6 +1254,7 @@ static cg_err_t disassembler(struct block *block, struct cursor *cursor)
     return CG_OK;
 }
 
+__attribute__((unused))
 static cg_err_t decompressor(struct block *block, void *buffer,
         size_t buffer_size, enum compressor compressor_type)
 {
@@ -1274,6 +1287,10 @@ static cg_err_t decompressor(struct block *block, void *buffer,
     return CG_OK;
 }
 
+#if defined(COMPILE_WITH_UNIT_TESTS)
+static struct chunk *unit_test_file_objects[OBJECT_TYPE_COUNT];
+#endif
+
 static cg_err_t
 deserializer(struct block *block, struct savegame *save, enum object_type object_type)
 {
@@ -1282,6 +1299,21 @@ deserializer(struct block *block, struct savegame *save, enum object_type object
         block->size
     }};
     cg_err_t err = CG_OK;
+
+#if defined(COMPILE_WITH_UNIT_TESTS)
+    if (unit_test_file_objects[object_type]) {
+        free(unit_test_file_objects[object_type]);
+    }
+
+    /* Copy this block for unit testing. */
+    unit_test_file_objects[object_type] = chunk_alloc(block->size);
+    if (!unit_test_file_objects[object_type]) {
+        perror("chunk_alloc");
+        exit(1);
+    }
+
+    memcpy(unit_test_file_objects[object_type]->data, block->buffer, block->size);
+#endif
 
     switch (object_type) {
     case OBJECT_FILE_HEADER:
@@ -1719,7 +1751,7 @@ serializer(struct block *block, const struct savegame *save, enum object_type ob
     }
 
     if (err) {
-        DEBUG_LOG("error %d while serializing object type %d\n", err, (int)object_type);
+        DEBUG_LOG("error %d at object type %d\n", err, (int)object_type);
         return err;
     }
 
@@ -1728,7 +1760,7 @@ serializer(struct block *block, const struct savegame *save, enum object_type ob
     return CG_OK;
 }
 
-static cg_err_t
+__attribute__((unused)) static cg_err_t
 compressor(struct block *block, void *buffer, size_t buffer_size, enum compressor compressor_type)
 {
     compress_fn_t compress;
@@ -2237,13 +2269,92 @@ void savegame_free(struct savegame *save)
     free(save);
 }
 
-#define TEST_SUITE(TEST_CASE)           \
-    TEST_CASE(read_and_write_sample_files_back_identically)
+#if defined(COMPILE_WITH_UNIT_TESTS)
+
+#define TEST_SUITE(TEST_CASE)                                   \
+    TEST_CASE(serialize_deserialized_objects_test)              \
+    TEST_CASE(read_and_write_sample_files_back_identically)     \
 
 #include <dirent.h>
 #include "unit_tests.h"
 
-static void read_and_write_file_back_identically(const char *sample_filename)
+static void for_each_sample_file(void (*callback)(const char *filename))
+{
+    struct dirent *dirent;
+    DIR *samples;
+
+    samples = opendir("../samples");
+    ASSERT_NOT_NULL(samples);
+
+    while ((dirent = readdir(samples)) != NULL) {
+        char sample_filename[512];
+
+        if (dirent->d_type != DT_REG) {
+			continue;
+		}
+
+        sprintf(sample_filename, "../samples/%s", dirent->d_name);
+
+        eprintf("sample file: %s\n", sample_filename);
+        callback(sample_filename);
+    }
+
+    closedir(samples);
+}
+
+static void serialize_deserialized_objects(const char *sample_filename)
+{
+    struct savegame *save;
+    char *sample_file;
+    size_t sample_file_size;
+    cg_err_t err;
+
+    enum {BUFFER_SIZE = 8 * 1024 * 1024};
+    static char buffer[BUFFER_SIZE];
+
+    struct block block = {
+        .buffer = buffer,
+        .buffer_size = BUFFER_SIZE
+    };
+
+    save = savegame_alloc();
+    sample_file = mmap_entire_file_r(sample_filename, &sample_file_size);
+    ASSERT_NE(sample_file, MAP_FAILED);
+    ASSERT_NOT_NULL(save);
+
+    /* Read objects into unit_test_file_objects. */
+    err = file_reader(sample_file, sample_file_size, save);
+    munmap(sample_file, sample_file_size);
+    ASSERT_EQ(err, CG_OK);
+
+    for (int i = 0; i < OBJECT_TYPE_COUNT; ++i) {
+        ut_info("Serializing object %d\n", i);
+
+        err = serializer(&block, save, i);
+        if (err == CG_NOT_PRESENT) {
+            continue;
+        }
+        ASSERT_EQ(err, CG_OK);
+        ASSERT_EQ_MEM(block.buffer, block.size,
+                unit_test_file_objects[i]->data,
+                unit_test_file_objects[i]->size);
+    }
+
+    for (int i = 0; i < OBJECT_TYPE_COUNT; ++i) {
+        free(unit_test_file_objects[i]);
+        unit_test_file_objects[i] = NULL;
+    }
+
+    savegame_free(save);
+}
+
+UNIT_TEST(serialize_deserialized_objects_test)
+{
+    debug_log_file = stderr;
+    for_each_sample_file(serialize_deserialized_objects);
+}
+
+static void check_writer_produces_identical_file(const char *sample_filename)
 {
     size_t rewritten_file_size;
     struct savegame *save;
@@ -2254,7 +2365,7 @@ static void read_and_write_file_back_identically(const char *sample_filename)
 
     sample_file = mmap_entire_file_r(sample_filename, &sample_file_size);
     save = savegame_alloc();
-    ASSERT_NOT_NULL(sample_file);
+    ASSERT_NE(sample_file, MAP_FAILED);
     ASSERT_NOT_NULL(save);
 
     err = file_reader(sample_file, sample_file_size, save);
@@ -2276,37 +2387,20 @@ static void read_and_write_file_back_identically(const char *sample_filename)
                 dump_filename, sample_filename);
 
         dump_to_file(dump_filename, rewritten_file, rewritten_file_size, 0);
-
-        /* Generate error. */
-        ASSERT_EQ(rewritten_file_size, sample_file_size);
     }
 
-    ASSERT_EQ_ARR(sample_file, rewritten_file, sample_file_size);
+    ASSERT_EQ_MEM(sample_file, sample_file_size,
+            rewritten_file, rewritten_file_size);
 
     munmap(sample_file, sample_file_size);
     free(rewritten_file);
+    savegame_free(save);
 }
 
 UNIT_TEST(read_and_write_sample_files_back_identically)
 {
-    struct dirent *dirent;
-    DIR *samples;
-
     debug_log_file = stderr;
-
-    samples = opendir("../samples");
-    ASSERT_NOT_NULL(samples);
-
-    while ((dirent = readdir(samples)) != NULL) {
-        char sample_filename[512];
-
-        if (dirent->d_type != DT_REG) {
-			continue;
-		}
-
-        sprintf(sample_filename, "../samples/%s", dirent->d_name);
-
-        eprintf("sample file: %s\n", sample_filename);
-        read_and_write_file_back_identically(sample_filename);
-    }
+    for_each_sample_file(check_writer_produces_identical_file);
 }
+
+#endif /* defined(COMPILE_WITH_UNIT_TESTS) */
