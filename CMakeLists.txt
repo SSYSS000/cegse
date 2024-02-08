@@ -45,13 +45,17 @@ set(unit_test_files
 
 foreach(file ${unit_test_files})
     get_filename_component(target ${file} NAME_WLE)
+    set(target unit_tests_${target})
+
     add_executable(${target} ${file})
     
     target_compile_definitions(${target} PRIVATE
         COMPILE_WITH_UNIT_TESTS=1)
 
-    #target_compile_options(${target} PRIVATE -Wno-parentheses)
-    target_link_libraries(${target} test_dependencies lz4 z)
+    target_link_libraries(${target}
+        test_dependencies
+        lz4
+        z)
 
     add_test(NAME ${target} COMMAND ${target})
 endforeach()
