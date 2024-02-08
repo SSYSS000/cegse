@@ -426,24 +426,24 @@ static cg_err_t disassembler(struct block *, struct cursor *);
 static void print_locations_table(const struct location_table *t)
 {
     DEBUG_LOG("\n"
-       "+============================================+\n"
-       "|                Location table              |\n"
-       "+============================================+\n"
-       "|   %8s    %6s       %s            |\n"
-       "| 0x%08x    %6u       Globals 1       |\n"
-       "| 0x%08x    %6u       Globals 2       |\n"
-       "| 0x%08x    %6u       Change forms    |\n"
-       "| 0x%08x    %6u       Globals 3       |\n"
-       "| 0x%08x                 Form IDs        |\n"
-       "| 0x%08x                 Unknown table   |\n"
-       "+============================================+\n",
+       "+==============================================+\n"
+       "|                Location table                |\n"
+       "+==============================================+\n"
+       "|   %8s    %6s       %-14s    |\n"
+       "| 0x%08x    %6u       %-15s   |\n"
+       "| 0x%08x    %6u       %-15s   |\n"
+       "| 0x%08x    %6u       %-15s   |\n"
+       "| 0x%08x    %6u       %-15s   |\n"
+       "| 0x%08x    %6s       %-15s   |\n"
+       "| 0x%08x    %6s       %-15s   |\n"
+       "+==============================================+\n",
        "offset", "count", "item",
-       t->off_globals1, t->num_globals1,
-       t->off_globals2, t->num_globals2,
-       t->off_change_forms, t->num_change_forms,
-       t->off_globals3, t->num_globals3,
-       t->off_form_ids_count,
-       t->off_unknown_table
+       t->off_globals1, t->num_globals1, "Globals 1",
+       t->off_globals2, t->num_globals2, "Globals 2",
+       t->off_change_forms, t->num_change_forms, "Change forms",
+       t->off_globals3, t->num_globals3, "Globals 3",
+       t->off_form_ids_count, "", "Form IDs",
+       t->off_unknown_table, "", "Unknown table"
     );
 }
 
