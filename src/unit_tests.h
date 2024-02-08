@@ -44,6 +44,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define eprintf(fmt, ...) fprintf(stderr, fmt, ##__VA_ARGS__)
 #endif
 
+#ifndef STRINGIFY
+#define STRINGIFY(x) #x
+#endif
+
+#ifndef XSTR
+#define XSTR(x) STRINGIFY(x)
+#endif
+
 typedef void (*unit_test_t)(void);
 
 static void ut_vprintf(const char *color, const char *fmt, va_list va)
@@ -85,10 +93,11 @@ static void ut_error(const char *fmt, ...)
 }
 
 #define GET_PRI_SPECIFIER(x) _Generic((x),              \
+    _Bool: "%d",                                        \
     void *: "%p",                                       \
     const void *: "%p",                                 \
-    char *: "%s",                                       \
-    const char *: "%s",                                 \
+    char *: "\"%s\"",                                   \
+    const char *: "\"%s\"",                             \
     char: "%c",                                         \
     signed char: "%hhd",                                \
     unsigned char: "0x%hhx",                            \
@@ -105,47 +114,53 @@ static void ut_error(const char *fmt, ...)
 )
 
 /* Assert functions. */
-#define PRINT_ASSERT_FAIL_HEADER_INNER(file, line, func, assertion, ...) do { \
-    ut_error("Assertion failed\n"                       \
-            "        File: %s\n"                        \
-            "        Line: %d\n"                        \
-            "        Test: %s\n"                        \
-            "   Assertion: ",                           \
-            file, line, func);                          \
-    ut_error(assertion, ##__VA_ARGS__);                 \
-    fputc('\n', stderr);                                \
-} while (0)
+static void print_assert_fail_header(const char *file, int line, const char *func)
+{
+    ut_error("ASSERTION FAILED\n");
+    ut_info("File: %s\n"
+            "Line: %d\n"
+            "Function: %s\n"
+            "\n"
+            "Assertion:\n\t", file, line, func);
+}
+#define PRINT_ASSERT_FAIL_HEADER() print_assert_fail_header(__FILE__, __LINE__, __func__)
 
-#define PRINT_ASSERT_FAIL_HEADER(assertion, ...)        \
-    PRINT_ASSERT_FAIL_HEADER_INNER(__FILE__, __LINE__,  \
-            __func__, assertion, ##__VA_ARGS__)
-
-#define BASIC_ASSERT(assertion, a, b) do {               \
-    if (!(assertion)) {                                  \
-        PRINT_ASSERT_FAIL_HEADER(#assertion);            \
-        ut_error("        Left: ");                      \
-        ut_error(GET_PRI_SPECIFIER(a), a);               \
-        ut_error("\n");                                  \
-        ut_error("       Right: ");                      \
-        ut_error(GET_PRI_SPECIFIER(b), b);               \
-        ut_error("\n");                                  \
-        ut_error("\n");                                  \
-        ut_error("\n");                                  \
+#define BASIC_ASSERT(aOp, bOp, test, aEval, bEval) do {  \
+    /* Evaluate only once */                             \
+    typeof(aEval) aa = aEval;                            \
+    typeof(bEval) bb = bEval;                            \
+    if (!(test(aa, bb))) {                               \
+        PRINT_ASSERT_FAIL_HEADER();                      \
+        eprintf("%s\n", XSTR(test(aOp, bOp)));           \
+        ut_info("Left operand value:\n\t");              \
+        eprintf(GET_PRI_SPECIFIER(aa), aa);              \
+        ut_info("\nRight operand value:\n\t");           \
+        eprintf(GET_PRI_SPECIFIER(bb), bb);              \
+        eprintf("\n\n");                                 \
         exit(1);                                         \
     }                                                    \
 } while (0)
 
-#define ASSERT_EQ(a, b) BASIC_ASSERT(a == b, a, b)
-#define ASSERT_NE(a, b) BASIC_ASSERT(a != b, a, b)
-#define ASSERT_LT(a, b) BASIC_ASSERT(a < b, a, b)
-#define ASSERT_LE(a, b) BASIC_ASSERT(a <= b, a, b)
-#define ASSERT_GT(a, b) BASIC_ASSERT(a > b, a, b)
-#define ASSERT_GE(a, b) BASIC_ASSERT(a >= b, a, b)
-#define ASSERT_TRUE(a) BASIC_ASSERT((bool) a == true, a, true)
-#define ASSERT_FALSE(a) BASIC_ASSERT((bool) a == false, a, false)
-#define ASSERT_EQ_PTR(a, b) BASIC_ASSERT(a == b, (void *)(a), (void*)(b))
-#define ASSERT_NE_PTR(a, b) BASIC_ASSERT(a != b, (void *)(a), (void*)(b))
-#define ASSERT_NOT_NULL(a) ASSERT_NE_PTR(a, NULL)
+#define TEST_EQUALS(a, b)                a == b
+#define TEST_NOT_EQUALS(a, b)            a != b
+#define TEST_LESS_THAN(a, b)             a < b
+#define TEST_LESS_THAN_OR_EQ(a, b)       a <= b
+#define TEST_GREATER_THAN(a, b)          a > b
+#define TEST_GREATER_THAN_OR_EQ(a, b)    a >= b
+
+#define ASSERT_EQ(a, b)     BASIC_ASSERT(a, b, TEST_EQUALS, a, b)
+#define ASSERT_NE(a, b)     BASIC_ASSERT(a, b, TEST_NOT_EQUALS, a, b)
+#define ASSERT_LT(a, b)     BASIC_ASSERT(a, b, TEST_LESS_THAN, a, b)
+#define ASSERT_LE(a, b)     BASIC_ASSERT(a, b, TEST_LESS_THAN_OR_EQ, a, b)
+#define ASSERT_GT(a, b)     BASIC_ASSERT(a, b, TEST_GREATER_THAN, a, b)
+#define ASSERT_GE(a, b)     BASIC_ASSERT(a, b, TEST_GREATER_THAN_OR_EQ, a, b)
+
+#define ASSERT_TRUE(a)      BASIC_ASSERT(a, 0, TEST_NOT_EQUALS, (_Bool)(a), 0)
+#define ASSERT_FALSE(a)     BASIC_ASSERT(a, 0, TEST_EQUALS, (_Bool)(a), 0)
+
+#define ASSERT_EQ_PTR(a, b) BASIC_ASSERT(a, b, TEST_EQUALS, (void *)(a), (void*)(b))
+#define ASSERT_NE_PTR(a, b) BASIC_ASSERT(a, b, TEST_NOT_EQUALS, (void *)(a), (void*)(b))
+#define ASSERT_NOT_NULL(a)  ASSERT_NE_PTR(a, NULL)
 
 #define ASSERT_EQ_ARR(a, b, n) do {                                       \
     int check_equal_element_sizes[sizeof(*(a)) != sizeof(*(b)) ? -1 : 1]; \
@@ -153,18 +168,19 @@ static void ut_error(const char *fmt, ...)
                                                                           \
     for (size_t i = 0; i < n; ++i) {                                      \
         if ((a)[i] != (b)[i]) {                                           \
-            PRINT_ASSERT_FAIL_HEADER("Equal array elements over 0..%zu", (size_t)(n)); \
-            ut_error("Discrepancy at index %zu:\n", i);                   \
-            ut_error("      array1 = "#a "\n");                           \
-            ut_error("      array2 = "#b "\n");                           \
-            ut_error("      array1[%zu] = ", i);                          \
-            ut_error(GET_PRI_SPECIFIER(*(a)), (a)[i]);                    \
-            ut_error("\n");                                               \
-            ut_error("      array2[%zu] = ", i);                          \
-            ut_error(GET_PRI_SPECIFIER(*(b)), (b)[i]);                    \
-            ut_error("\n");                                               \
-            ut_error("\n");                                               \
-            ut_error("\n");                                               \
+            PRINT_ASSERT_FAIL_HEADER();                                   \
+            ut_info("Equal array elements over 0..%zu\n", (size_t)(n));   \
+            ut_info("Discrepancy at index %zu:\n", i);                    \
+            ut_info("      array1 = "#a "\n");                            \
+            ut_info("      array2 = "#b "\n");                            \
+            ut_info("      array1[%zu] = ", i);                           \
+            ut_info(GET_PRI_SPECIFIER(*(a)), (a)[i]);                     \
+            ut_info("\n");                                                \
+            ut_info("      array2[%zu] = ", i);                           \
+            ut_info(GET_PRI_SPECIFIER(*(b)), (b)[i]);                     \
+            ut_info("\n");                                                \
+            ut_info("\n");                                                \
+            ut_info("\n");                                                \
             exit(1);                                                      \
         }                                                                 \
     }                                                                     \
@@ -194,11 +210,11 @@ static void assert_eq_mem_impl(
         return;
     }
 
-    PRINT_ASSERT_FAIL_HEADER_INNER(file, line, func,
-            "Equal memory (%s, %s)", aname, bname);
+    print_assert_fail_header(file, line, func);
+    ut_info("Equal memory (%s, %s)\n", aname, bname);
 
     if (asize != bsize) {
-        ut_error("Memory areas are not the same size:\n"
+        ut_info("Memory areas are not the same size:\n"
                 "%s: %zu bytes\n"
                 "%s: %zu bytes\n",
                 aname, asize, bname, bsize);
@@ -210,7 +226,7 @@ static void assert_eq_mem_impl(
         MAX_BYTES_TO_DUMP = 256
     };
 
-    ut_error("Partial hex dump of memory areas at difference:\n");
+    ut_info("Partial hex dump of memory areas at difference:\n");
     ut_info("          %-26s %s\n", aname, bname);
 
     for (size_t i = diff_index; i < smallest; i += COLS_PER_ITEM) {
