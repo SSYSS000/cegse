@@ -160,7 +160,7 @@ FOR_ALL_TYPES(DEFINE_FILE_API)
 
 #define TEST_SUITE(TEST_CASE)                           \
     TEST_CASE(store_load_functions)                     \
-    TEST_CASE(cursor_api)
+    TEST_CASE(cursor_advance)
 
 #include "unit_tests.h"
 
@@ -183,12 +183,37 @@ UNIT_TEST(store_load_functions)
     }
 }
 
-UNIT_TEST(cursor_api)
+UNIT_TEST(cursor_advance)
 {
-    char buffer[1024];
+    enum { BUFFER_SIZE = 1024 };
+    char buffer[BUFFER_SIZE];
 
     struct cursor *cursor = (struct cursor[]) {{
-        buffer, sizeof(buffer)
+        buffer, BUFFER_SIZE
     }};
 
+    /* c_advance */
+    c_advance(cursor, BUFFER_SIZE);
+    ASSERT_EQ(cursor->n, 0);
+    ASSERT_EQ_PTR(cursor->pos, buffer + BUFFER_SIZE);
+
+    c_advance(cursor, -BUFFER_SIZE);
+    ASSERT_EQ(cursor->n, BUFFER_SIZE);
+    ASSERT_EQ_PTR(cursor->pos, buffer);
+
+    c_advance(cursor, BUFFER_SIZE + 1);
+    ASSERT_EQ(cursor->n, -1);
+
+    c_advance(cursor, 4);
+    ASSERT_EQ(cursor->n, -5);
+
+    c_advance(cursor, -(BUFFER_SIZE + 5));
+
+    /* c_advance2 */
+    struct cursor cursor2_buf;
+    c_advance2(&cursor2_buf, cursor, 4);
+    ASSERT_EQ(cursor->n, BUFFER_SIZE);
+    ASSERT_EQ_PTR(cursor->pos, buffer);
+    ASSERT_EQ(cursor2_buf.n, BUFFER_SIZE - 4);
+    ASSERT_EQ_PTR(cursor2_buf.pos, buffer + 4);
 }
