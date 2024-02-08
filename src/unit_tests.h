@@ -16,7 +16,14 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef UNIT_TESTS_H
+#ifndef COMPILE_WITH_UNIT_TESTS
+#error "unit_tests.h included but COMPILE_WITH_UNIT_TESTS not defined. Include guards recommended."
+#endif
+
+#ifdef UNIT_TESTS_H
+#error "unit_tests.h included twice."
+#endif
+
 #define UNIT_TESTS_H
 
 #include <stdlib.h>
@@ -279,7 +286,6 @@ static void assert_eq_mem_impl(
 #define ASSERT_EQ_MEM(a, asize, b, bsize)\
     assert_eq_mem_impl(__FILE__, __LINE__, __func__, #a, #b, a, asize, b, bsize)
 
-#if defined(COMPILE_WITH_UNIT_TESTS)
 
 TEST_SUITE(DECL_UNIT_TEST)
 
@@ -298,6 +304,3 @@ int main()
     return 0;
 }
 
-#endif /* defined(COMPILE_WITH_UNIT_TESTS) */
-
-#endif /* UNIT_TESTS_H */

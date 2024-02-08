@@ -157,6 +157,8 @@ FOR_PRIMITIVE_TYPES(DEFINE_POINTER_TO_BUF_API)
 FOR_ALL_TYPES(DEFINE_CURSOR_API)
 FOR_ALL_TYPES(DEFINE_FILE_API)
 
+#ifdef COMPILE_WITH_UNIT_TESTS
+
 #define TEST_SUITE(TEST_CASE)                           \
     TEST_CASE(store_load_functions)                     \
     TEST_CASE(cursor_advance)
@@ -216,3 +218,5 @@ UNIT_TEST(cursor_advance)
     ASSERT_EQ(cursor2_buf.n, BUFFER_SIZE - 4);
     ASSERT_EQ_PTR(cursor2_buf.pos, buffer + 4);
 }
+
+#endif /* COMPILE_WITH_UNIT_TESTS */
