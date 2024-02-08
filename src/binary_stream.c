@@ -171,7 +171,7 @@ UNIT_TEST(store_load_functions)
         const char correct_repr[] = {0x12, 0x34, 0x56};
         store_be24(buffer, 0x123456);
         ASSERT_EQ_ARR(buffer, correct_repr, 3);
-        ASSERT_EQ(load_be24(buffer), 0x123456);
+        ASSERT_EQ(load_be24(buffer), 0x123456u);
     }
 
     {
