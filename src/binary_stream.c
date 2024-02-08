@@ -34,32 +34,31 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
     ITEM(be24, uint32_t, 3)                             \
 
 #define DEFINE_POINTER_TO_BUF_API(id, type, size)       \
-void store_##id(char *dest, type value)                 \
+void store_##id(unsigned char *dest, type value)        \
 {                                                       \
     value = hto##id(value);                             \
     memcpy(dest, &value, size);                         \
 }                                                       \
                                                         \
-type load_##id(const char *src)                         \
+type load_##id(const unsigned char *src)                \
 {                                                       \
     type value;                                         \
     memcpy(&value, src, size);                          \
     return id##toh(value);                              \
 }
 
-void store_be24(char *dest, uint32_t value)
+void store_be24(unsigned char *dest, uint32_t value)
 {
     dest[0] = (value >> 16) & 0xff;
     dest[1] = (value >> 8) & 0xff;
     dest[2] = value & 0xff;
 }
 
-uint32_t load_be24(const char *src)
+uint32_t load_be24(const unsigned char *src)
 {
-    const unsigned char *uc = (const unsigned char *)src;
-    return (uint32_t) uc[0] << 16 |
-           (uint32_t) uc[1] << 8  |
-           (uint32_t) uc[2];
+    return (uint32_t) src[0] << 16 |
+           (uint32_t) src[1] << 8  |
+           (uint32_t) src[2];
 }
 
 void c_store_bytes(struct cursor *cursor, const void *bytes, size_t n)
@@ -118,14 +117,14 @@ type c_load_##id##_or0(struct cursor *c)                \
 #define DEFINE_FILE_API(id, type, size)                 \
 size_t put_##id(FILE *stream, type value)               \
 {                                                       \
-    char bytes[size];                                   \
+    unsigned char bytes[size];                          \
     store_##id(bytes, value);                           \
     return fwrite(bytes, size, 1, stream);              \
 }                                                       \
                                                         \
 int get_##id(FILE *restrict stream, type *restrict dest)\
 {                                                       \
-    char bytes[size];                                   \
+    unsigned char bytes[size];                          \
     if (fread(bytes, size, 1, stream)) {                \
         *dest = load_##id(bytes);                       \
         return 1;                                       \
@@ -166,7 +165,7 @@ FOR_ALL_TYPES(DEFINE_FILE_API)
 
 UNIT_TEST(store_load_functions)
 {
-    char buffer[1024];
+    unsigned char buffer[1024];
 
     {
         const char correct_repr[] = {0x12, 0x34, 0x56};
@@ -186,7 +185,7 @@ UNIT_TEST(store_load_functions)
 UNIT_TEST(cursor_advance)
 {
     enum { BUFFER_SIZE = 1024 };
-    char buffer[BUFFER_SIZE];
+    unsigned char buffer[BUFFER_SIZE];
 
     struct cursor *cursor = (struct cursor[]) {{
         buffer, BUFFER_SIZE

@@ -359,7 +359,7 @@ enum block_type {
  */
 struct block {
     /* Points to data, compressed or not.  */
-    char *buffer;
+    unsigned char *buffer;
 
     /* Buffer capacity. */
     unsigned buffer_size;
@@ -401,8 +401,8 @@ static inline struct cregion const_block_as_cregion(const struct block *block)
     return make_cregion(block->buffer, block->size);
 }
 
-static cg_err_t file_writer(char *file, size_t *file_size_ptr, const struct savegame *save);
-static cg_err_t file_reader(const char *file, size_t file_size, struct savegame *save);
+static cg_err_t file_writer(unsigned char *file, size_t *file_size_ptr, const struct savegame *save);
+static cg_err_t file_reader(const unsigned char *file, size_t file_size, struct savegame *save);
 
 static cg_err_t serializer(struct block *, const struct savegame *, enum object_type);
 static cg_err_t deserializer(struct block *, struct savegame *, enum object_type);
@@ -760,8 +760,8 @@ struct savegame *cengine_savefile_read(const char *filename)
 {
     struct savegame *save;
     size_t file_size = 0;
+    unsigned char *file;
     cg_err_t err;
-    char *file;
 
     file = mmap_entire_file_r(filename, &file_size);
     if (!file) {
@@ -815,7 +815,8 @@ struct savegame *cengine_savefile_read(const char *filename)
     return save;
 }
 
-static cg_err_t file_reader(const char *file, size_t file_size, struct savegame *save)
+static cg_err_t
+file_reader(const unsigned char *file, size_t file_size, struct savegame *save)
 {
     struct location_table locations;
     struct chunk *buffers[1] = {0};
@@ -836,7 +837,7 @@ static cg_err_t file_reader(const char *file, size_t file_size, struct savegame 
         return CG_CORRUPT;
     }
 
-    file_cursor.pos = (char *) file;
+    file_cursor.pos = (unsigned char *) file;
     file_cursor.n = file_size;
     cursor = &file_cursor;
 
@@ -1839,7 +1840,8 @@ static void assembler(const struct block *block, struct cursor *cursor)
     c_advance(cursor, block->size);
 }
 
-static cg_err_t file_writer(char *file, size_t *file_size_ptr, const struct savegame *save)
+static cg_err_t
+file_writer(unsigned char *file, size_t *file_size_ptr, const struct savegame *save)
 {
     struct location_table locations = {0};
     struct chunk *buffers[1] = {0}; /* Buffers for compression. */
@@ -1848,7 +1850,7 @@ static cg_err_t file_writer(char *file, size_t *file_size_ptr, const struct save
     struct cursor *cursor;      /* The cursor being used. */
     intptr_t offset_var = (intptr_t)file; /* Variable for file offset calculation. */
     size_t max_file_size;       /* Size of 'file' arg for bounds checking. */
-    char *ptr_to_locations;     /* Points where to write location table. */
+    unsigned char *ptr_to_locations; /* Points where to write location table. */
     cg_err_t err = CG_OK;
 
     max_file_size = *file_size_ptr;
@@ -2304,13 +2306,13 @@ static void for_each_sample_file(void (*callback)(const char *filename))
 
 static void serialize_deserialized_objects(const char *sample_filename)
 {
-    struct savegame *save;
-    char *sample_file;
+    unsigned char *sample_file;
     size_t sample_file_size;
+    struct savegame *save;
     cg_err_t err;
 
     enum {BUFFER_SIZE = 8 * 1024 * 1024};
-    static char buffer[BUFFER_SIZE];
+    static unsigned char buffer[BUFFER_SIZE];
 
     struct block block = {
         .buffer = buffer,
@@ -2319,7 +2321,7 @@ static void serialize_deserialized_objects(const char *sample_filename)
 
     save = savegame_alloc();
     sample_file = mmap_entire_file_r(sample_filename, &sample_file_size);
-    ASSERT_NE(sample_file, MAP_FAILED);
+    ASSERT_NE_PTR(sample_file, MAP_FAILED);
     ASSERT_NOT_NULL(save);
 
     /* Read objects into unit_test_file_objects. */
@@ -2356,16 +2358,16 @@ UNIT_TEST(serialize_deserialized_objects_test)
 
 static void check_writer_produces_identical_file(const char *sample_filename)
 {
+    unsigned char *rewritten_file;
+    unsigned char *sample_file;
     size_t rewritten_file_size;
-    struct savegame *save;
-    char *rewritten_file;
-    char *sample_file;
     size_t sample_file_size;
+    struct savegame *save;
     cg_err_t err;
 
     sample_file = mmap_entire_file_r(sample_filename, &sample_file_size);
     save = savegame_alloc();
-    ASSERT_NE(sample_file, MAP_FAILED);
+    ASSERT_NE_PTR(sample_file, MAP_FAILED);
     ASSERT_NOT_NULL(save);
 
     err = file_reader(sample_file, sample_file_size, save);

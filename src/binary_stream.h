@@ -22,7 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdint.h>
 
 struct cursor {
-    char *pos;
+    unsigned char *pos;
 
     /* 
      * When n > 0, n denotes the distance to the end from the current
@@ -41,19 +41,19 @@ struct cursor {
 };
 
 /* Pointer to buffer API */
-void store_u8(char *dest, uint8_t value);
-void store_le16(char *dest, uint16_t value);
-void store_be24(char *dest, uint32_t value);
-void store_le32(char *dest, uint32_t value);
-void store_le64(char *dest, uint64_t value);
-void store_lef32(char *dest, float value);
+void store_u8(unsigned char *dest, uint8_t value);
+void store_le16(unsigned char *dest, uint16_t value);
+void store_be24(unsigned char *dest, uint32_t value);
+void store_le32(unsigned char *dest, uint32_t value);
+void store_le64(unsigned char *dest, uint64_t value);
+void store_lef32(unsigned char *dest, float value);
 
-uint8_t load_u8(const char *src);
-uint16_t load_le16(const char *src);
-uint32_t load_be24(const char *src);
-uint32_t load_le32(const char *src);
-uint64_t load_le64(const char *src);
-float load_lef32(const char *src);
+uint8_t load_u8(const unsigned char *src);
+uint16_t load_le16(const unsigned char *src);
+uint32_t load_be24(const unsigned char *src);
+uint32_t load_le32(const unsigned char *src);
+uint64_t load_le64(const unsigned char *src);
+float load_lef32(const unsigned char *src);
 
 /* Cursor API */
 /*
