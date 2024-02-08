@@ -143,7 +143,9 @@ static void ut_error(const char *fmt, ...)
 #define ASSERT_GE(a, b) BASIC_ASSERT(a >= b, a, b)
 #define ASSERT_TRUE(a) BASIC_ASSERT((bool) a == true, a, true)
 #define ASSERT_FALSE(a) BASIC_ASSERT((bool) a == false, a, false)
-#define ASSERT_NOT_NULL(a) BASIC_ASSERT(a != NULL, (void *)a, NULL)
+#define ASSERT_EQ_PTR(a, b) BASIC_ASSERT(a == b, (void *)(a), (void*)(b))
+#define ASSERT_NE_PTR(a, b) BASIC_ASSERT(a != b, (void *)(a), (void*)(b))
+#define ASSERT_NOT_NULL(a) ASSERT_NE_PTR(a, NULL)
 
 #define ASSERT_EQ_ARR(a, b, n) do {                                       \
     int check_equal_element_sizes[sizeof(*(a)) != sizeof(*(b)) ? -1 : 1]; \
