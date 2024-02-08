@@ -558,6 +558,11 @@ static int object_type_from_glda_type_number(int type_number)
 #undef X
 }
 
+/*
+ * Encode a variable size value. Caller decides whether it is an error
+ * when the buffer overflows. Therefore, this returns CG_OK even if
+ * the buffer is full. See cursor->n to check buffer overflow.
+ */
 static cg_err_t encode_vsval(struct cursor *cursor, uint32_t value)
 {
     int num_octets;
@@ -2274,11 +2279,140 @@ void savegame_free(struct savegame *save)
 #if defined(COMPILE_WITH_UNIT_TESTS)
 
 #define TEST_SUITE(TEST_CASE)                                   \
+    TEST_CASE(vsval_encoding)                                   \
+    TEST_CASE(vsval_decoding)                                   \
     TEST_CASE(serialize_deserialized_objects_test)              \
     TEST_CASE(read_and_write_sample_files_back_identically)     \
 
 #include <dirent.h>
 #include "unit_tests.h"
+
+/* Initialize cursor referred to by C for a new scope. */
+#define with_cursor \
+    for (struct { int i; struct cursor c; } _i = {0, {buffer, BUF_SIZE}}; _i.i < 1; _i.i++)
+
+/* Reference to cursor. */
+#define C (&_i.c)
+
+/* Cursor pos offset from buffer. */
+#define OFFSET (C->pos - buffer)
+
+UNIT_TEST(vsval_encoding)
+{
+    enum {BUF_SIZE = 8};
+    unsigned char buffer[BUF_SIZE];
+
+    /* Encode values that result in 1 byte encoded.. */
+    with_cursor {
+        ASSERT_EQ(CG_OK, encode_vsval(C, 0));
+        ASSERT_EQ(1, OFFSET);
+        ASSERT_EQ(buffer[0], 0);
+    }
+
+    with_cursor {
+        ASSERT_EQ(CG_OK, encode_vsval(C, 1));
+        ASSERT_EQ(1, OFFSET);
+        ASSERT_EQ(buffer[0], 0x4);
+    }
+
+    with_cursor {
+        ASSERT_EQ(CG_OK, encode_vsval(C, 0x3f));
+        ASSERT_EQ(1, OFFSET);
+        ASSERT_EQ(buffer[0], 0xfc);
+    }
+
+    /* 2 byte length result. */
+    with_cursor {
+        ASSERT_EQ(CG_OK, encode_vsval(C, 0x40));
+        ASSERT_EQ(2, OFFSET);
+        ASSERT_EQ(buffer[0], 0x1);
+        ASSERT_EQ(buffer[1], 0x1);
+    }
+
+    /* 3 byte length result. */
+    with_cursor {
+        ASSERT_EQ(CG_OK, encode_vsval(C, 0x4000));
+        ASSERT_EQ(3, OFFSET);
+        ASSERT_EQ(buffer[0], 0x2);
+        ASSERT_EQ(buffer[1], 0x0);
+        ASSERT_EQ(buffer[2], 0x1);
+    }
+
+    /* Maximum value */
+    with_cursor {
+        ASSERT_EQ(CG_OK, encode_vsval(C, VSVAL_MAX));
+        ASSERT_EQ(3, OFFSET);
+        ASSERT_EQ(buffer[0], 0xfe);
+        ASSERT_EQ(buffer[1], 0xff);
+        ASSERT_EQ(buffer[2], 0xff);
+    }
+
+    /* One past maximum value */
+    with_cursor {
+        ASSERT_EQ(CG_INVAL, encode_vsval(C, VSVAL_MAX + 1));
+        ASSERT_EQ(0, OFFSET);
+    }
+
+    /* Negative integer. */
+    with_cursor {
+        ASSERT_EQ(CG_INVAL, encode_vsval(C, -1));
+        ASSERT_EQ(0, OFFSET);
+    }
+
+    /* Buffer overflow testing. */
+    with_cursor {
+        c_advance(C, BUF_SIZE);
+
+        ASSERT_EQ(CG_OK, encode_vsval(C, 1));
+        ASSERT_EQ(-1, C->n);
+
+        ASSERT_EQ(CG_OK, encode_vsval(C, 0x4000));
+        ASSERT_EQ(-4, C->n);
+    }
+}
+
+UNIT_TEST(vsval_decoding)
+{
+    enum {BUF_SIZE = 16};
+    unsigned char buffer[BUF_SIZE] = {
+        0x0,             /* 0x0 */
+        0x4,              /* 0x1 */
+        0xfc,             /* 0x3f */
+        0x2, 0x0, 0x1,   /* 0x4000 */
+        0xfe, 0xff, 0xff, /* VSVAL_MAX */
+        0xff              /* corrupt */
+    };
+    uint32_t result;
+
+    with_cursor {
+        ASSERT_EQ(CG_OK, decode_vsval(C, &result));
+        ASSERT_EQ(0x0, result);
+        ASSERT_EQ(OFFSET, 1);
+
+        ASSERT_EQ(CG_OK, decode_vsval(C, &result));
+        ASSERT_EQ(0x1, result);
+        ASSERT_EQ(OFFSET, 2);
+
+        ASSERT_EQ(CG_OK, decode_vsval(C, &result));
+        ASSERT_EQ(0x3f, result);
+        ASSERT_EQ(OFFSET, 3);
+
+        ASSERT_EQ(CG_OK, decode_vsval(C, &result));
+        ASSERT_EQ(0x4000, result);
+        ASSERT_EQ(OFFSET, 6);
+
+        ASSERT_EQ(CG_OK, decode_vsval(C, &result));
+        ASSERT_EQ(VSVAL_MAX, result);
+        ASSERT_EQ(OFFSET, 9);
+
+        ASSERT_EQ(CG_CORRUPT, decode_vsval(C, &result));
+        ASSERT_EQ(OFFSET, 10);
+    }
+}
+
+#undef with_cursor
+#undef C
+#undef OFFSET
 
 static void for_each_sample_file(void (*callback)(const char *filename))
 {
@@ -2319,15 +2453,13 @@ static void serialize_deserialized_objects(const char *sample_filename)
         .buffer_size = BUFFER_SIZE
     };
 
-    save = savegame_alloc();
     sample_file = mmap_entire_file_r(sample_filename, &sample_file_size);
     ASSERT_NE_PTR(sample_file, MAP_FAILED);
-    ASSERT_NOT_NULL(save);
+    ASSERT_NOT_NULL(save = savegame_alloc());
 
     /* Read objects into unit_test_file_objects. */
-    err = file_reader(sample_file, sample_file_size, save);
+    ASSERT_EQ(CG_OK, file_reader(sample_file, sample_file_size, save));
     munmap(sample_file, sample_file_size);
-    ASSERT_EQ(err, CG_OK);
 
     for (int i = 0; i < OBJECT_TYPE_COUNT; ++i) {
         ut_info("Serializing object %d\n", i);
@@ -2366,9 +2498,8 @@ static void check_writer_produces_identical_file(const char *sample_filename)
     cg_err_t err;
 
     sample_file = mmap_entire_file_r(sample_filename, &sample_file_size);
-    save = savegame_alloc();
     ASSERT_NE_PTR(sample_file, MAP_FAILED);
-    ASSERT_NOT_NULL(save);
+    ASSERT_NOT_NULL(save = savegame_alloc());
 
     err = file_reader(sample_file, sample_file_size, save);
     ASSERT_EQ(err, CG_OK);
@@ -2377,8 +2508,7 @@ static void check_writer_produces_identical_file(const char *sample_filename)
     ASSERT_NOT_NULL(rewritten_file);
 
     rewritten_file_size = sample_file_size;
-    err = file_writer(rewritten_file, &rewritten_file_size, save);
-    ASSERT_EQ(err, CG_OK);
+    ASSERT_EQ(CG_OK, file_writer(rewritten_file, &rewritten_file_size, save));
 
     if (rewritten_file_size != sample_file_size) {
         char dump_filename[512] = "./dump_rewritten_file";
