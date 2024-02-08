@@ -1928,7 +1928,12 @@ static cg_err_t file_writer(char *file, size_t *file_size_ptr, const struct save
     /*
      * Save pointer to file location table.
      */
+    if (cursor->n < LOCATION_TABLE_SIZE) {
+        err = CG_EOF;
+        goto out_error;
+    }
     ptr_to_locations = cursor->pos;
+    memset(ptr_to_locations, 0, LOCATION_TABLE_SIZE);
     c_advance(cursor, LOCATION_TABLE_SIZE);
 
     /*
