@@ -218,65 +218,74 @@ static void assert_eq_mem_impl(
     }
 
     print_assert_fail_header(file, line, func);
-    ut_info("Equal memory (%s, %s)\n", aname, bname);
+    eprintf("Matching memory areas\n");
 
-    if (asize != bsize) {
-        ut_info("Memory areas are not the same size:\n"
-                "%s: %zu bytes\n"
-                "%s: %zu bytes\n",
-                aname, asize, bname, bsize);
+    ut_info("Left operand:\n");
+    eprintf("\t%s\n", aname);
+    ut_info("Right operand:\n");
+    eprintf("\t%s\n", bname);
+
+    ut_info("Error:\n");
+    if (diff_index != smallest) {
+        eprintf("\t- Byte value mismatch at index %zu\n", diff_index);
     }
+    if (asize != bsize) {
+        eprintf("\t- Length mismatch: %zu and %zu bytes\n", asize, bsize);
+    }
+    
+    if (diff_index != smallest) {
+        ut_info("Hex dump starting at first nonmatching bytes:\n");
+        eprintf("          %-26s %s\n", aname, bname);
 
-    enum {
-        COLS_PER_LINE = 16,
-        COLS_PER_ITEM = COLS_PER_LINE / 2,
-        MAX_BYTES_TO_DUMP = 256
-    };
+        enum {
+            COLS_PER_LINE = 16,
+            COLS_PER_ITEM = COLS_PER_LINE / 2,
+            MAX_BYTES_TO_DUMP = 256
+        };
 
-    ut_info("Partial hex dump of memory areas at difference:\n");
-    ut_info("          %-26s %s\n", aname, bname);
+        for (size_t i = diff_index; i < smallest; i += COLS_PER_ITEM) {
+            eprintf("%08zx:", i);
 
-    for (size_t i = diff_index; i < smallest; i += COLS_PER_ITEM) {
-        ut_info("%08zx:", i);
+            for (size_t j = i; j < (i + COLS_PER_ITEM); ++j) {
+                int equal_byte = j < asize && j < bsize && ca[j] == cb[j];
+                if (!equal_byte) {
+                    eprintf("\e[0;33m");
+                }
 
-        for (size_t j = i; j < (i + COLS_PER_ITEM); ++j) {
-            int equal_byte = j < asize && j < bsize && ca[j] == cb[j];
-            if (!equal_byte) {
-                eprintf("\e[0;33m");
+                if (j < asize) {
+                    eprintf(" %02x", (unsigned)ca[j]);
+                }
+                else {
+                    fputs("     ", stderr);
+                }
+
+                eprintf("\e[0m");
             }
 
-            if (j < asize) {
-                eprintf(" %02x", (unsigned)ca[j]);
-            }
-            else {
-                fputs("     ", stderr);
-            }
+            fputs("   ", stderr);
 
-            eprintf("\e[0m");
-        }
+            for (size_t j = i; j < (i + COLS_PER_ITEM); ++j) {
+                int equal_byte = j < asize && j < bsize && ca[j] == cb[j];
+                if (!equal_byte) {
+                    eprintf("\e[0;33m");
+                }
 
-        fputs("   ", stderr);
+                if (j < bsize) {
+                    eprintf(" %02x", (unsigned)cb[j]);
+                }
+                else {
+                    fputs("     ", stderr);
+                }
 
-        for (size_t j = i; j < (i + COLS_PER_ITEM); ++j) {
-            int equal_byte = j < asize && j < bsize && ca[j] == cb[j];
-            if (!equal_byte) {
-                eprintf("\e[0;33m");
-            }
-
-            if (j < bsize) {
-                eprintf(" %02x", (unsigned)cb[j]);
-            }
-            else {
-                fputs("     ", stderr);
+                eprintf("\e[0m");
             }
 
-            eprintf("\e[0m");
-        }
+            fputs("\n", stderr);
 
-        fputs("\n", stderr);
-
-        if (i - diff_index > MAX_BYTES_TO_DUMP) {
-            break;
+            if (i - diff_index > MAX_BYTES_TO_DUMP) {
+                eprintf("%9s stopping due to limit\n", "");
+                break;
+            }
         }
     }
 
