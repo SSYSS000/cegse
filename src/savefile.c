@@ -542,30 +542,30 @@ static inline FILETIME time_to_filetime(time_t t)
 
 static unsigned glda_type_number(enum object_type type)
 {
+    switch (type) {
 #define X(number, object_type)                                                 \
     case object_type:                                                          \
         return number;
-    switch (type) {
         GLDA_TYPE_NUMBER_LIST
+#undef X
     default:
         assert(0); /* Invalid object type argument. */
         return 0;
     }
-#undef X
 }
 
 static int object_type_from_glda_type_number(int type_number)
 {
+    switch (type_number) {
 #define X(number, object_type)                                                 \
     case number:                                                               \
         return object_type;
-    switch (type_number) {
         GLDA_TYPE_NUMBER_LIST
+#undef X
     default:
         /* No object type for type_number. */
         return -1;
     }
-#undef X
 }
 
 /*
