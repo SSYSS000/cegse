@@ -51,8 +51,8 @@ ssize_t lz4_compress(struct cregion src, struct region dest)
 
 ssize_t zlib_compress(struct cregion src, struct region dest)
 {
-    (void) src;
-    (void) dest;
+    (void)src;
+    (void)dest;
 
     eprintf("zlib_compress: %s\n", strerror(ENOSYS));
 

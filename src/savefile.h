@@ -30,13 +30,13 @@ enum game {
 };
 
 enum misc_stat_category {
-    MS_GENERAL    = 0,
-    MS_QUEST      = 1,
-    MS_COMBAT     = 2,
-    MS_MAGIC      = 3,
-    MS_CRAFTING   = 4,
-    MS_CRIME      = 5,
-    MS_DLC        = 6
+    MS_GENERAL = 0,
+    MS_QUEST = 1,
+    MS_COMBAT = 2,
+    MS_MAGIC = 3,
+    MS_CRAFTING = 4,
+    MS_CRIME = 5,
+    MS_DLC = 6
 };
 
 struct misc_stat {
@@ -52,8 +52,8 @@ struct weather {
     ref_t unk_weather1;
     ref_t unk_weather2;
     ref_t regn_weather;
-    float current_time;    /* Current in-game time in hours */
-    float begin_time;      /* Time of current weather beginning */
+    float current_time; /* Current in-game time in hours */
+    float begin_time;   /* Time of current weather beginning */
 
     /*
      * A value from 0.0 to 1.0 describing how far in
@@ -64,11 +64,11 @@ struct weather {
     uint32_t data1[6];
     float data2;
 
-     /*
-      * data3 seems to affect sky colour.
-      * Anything other than 2 or 3 makes the sky purple in
-      * Sanctuary in Fallout.
-      */
+    /*
+     * data3 seems to affect sky colour.
+     * Anything other than 2 or 3 makes the sky purple in
+     * Sanctuary in Fallout.
+     */
     uint32_t data3;
     /*
      * This went from 1 to 0 when went indoors. data4 length changed to 0 too.
@@ -89,14 +89,11 @@ struct weather {
      *     uint16 ? (= 0x14)
      *     refid ?,
      *     refid ?,
-     *     uint32 ? (= 0x1), Skyrim SE form version 77 ends here, 78 keeps going.
+     *     uint32 ? (= 0x1), Skyrim SE form version 77 ends here, 78 keeps
+     * going.
      *
-     *     some of the strings present here were also present in change form type 0
-     *     and global data type 1001.
-     *     [wstring,
-     *     uint32,
-     *     wstring,
-     *     uint32,
+     *     some of the strings present here were also present in change form
+     * type 0 and global data type 1001. [wstring, uint32, wstring, uint32,
      *     wstring,
      *     uint32],
      *
@@ -119,8 +116,8 @@ struct player_location {
      */
     ref_t world_space1;
 
-    int32_t coord_x;     /* x-coordinate (cell coordinates) in world_space1 */
-    int32_t coord_y;     /* y-coordinate (cell coordinates) in world_space1 */
+    int32_t coord_x; /* x-coordinate (cell coordinates) in world_space1 */
+    int32_t coord_y; /* y-coordinate (cell coordinates) in world_space1 */
 
     /*
      * This can be either a worldspace or an interior cell.
@@ -130,9 +127,9 @@ struct player_location {
      */
     ref_t world_space2;
 
-    float pos_x;     /* x-coordinate in world_space2 */
-    float pos_y;     /* y-coordinate in world_space2 */
-    float pos_z;     /* z-coordinate in world_space2 */
+    float pos_x; /* x-coordinate in world_space2 */
+    float pos_y; /* y-coordinate in world_space2 */
+    float pos_z; /* z-coordinate in world_space2 */
 
     uint8_t unknown; /* vsval? It seems absent in 9th version */
 };
@@ -169,7 +166,7 @@ struct savegame {
      * The patch version of the creator of this save.
      * For Fallout 4 this might be e.g. "1.10.162.0".
      * Skyrim does not use this.
-    */
+     */
     char *game_version;
 
     uint8_t num_plugins;
@@ -205,7 +202,8 @@ struct savegame {
  */
 void savegame_free(struct savegame *save);
 
-int cengine_savefile_write(const char *filename, const struct savegame *savegame);
+int cengine_savefile_write(const char *filename,
+                           const struct savegame *savegame);
 
 struct savegame *cengine_savefile_read(const char *filename);
 

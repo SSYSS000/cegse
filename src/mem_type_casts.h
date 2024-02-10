@@ -39,7 +39,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  * including this file. In the definition, call the DO macro argument
  * for each type. Below is an example how to do it for struct custom and
  * something_else_t.
- * 
+ *
  * #define FOR_REGION_CASTS(DO)                       \
  *     DO(struct custom *, custom_as_region)          \
  *     DO(something_else_t, something_else_as_region)
@@ -95,25 +95,29 @@ static inline struct cregion cregion_from_const_chunk(const struct chunk *c)
 #define FOR_CREGION_CASTS(DO)
 #endif
 
-#define FOR_REGION_CASTS_WITH_PREDEFINED(DO)                \
-    DO(struct cregion, region_from_cregion)                 \
-    DO(struct chunk *, region_from_chunk)                   \
+#define FOR_REGION_CASTS_WITH_PREDEFINED(DO)                                   \
+    DO(struct cregion, region_from_cregion)                                    \
+    DO(struct chunk *, region_from_chunk)                                      \
     FOR_REGION_CASTS(DO)
 
-#define FOR_CREGION_CASTS_WITH_PREDEFINED(DO)               \
-    DO(struct region, cregion_from_region)                  \
-    DO(struct chunk *, cregion_from_const_chunk)            \
-    DO(const struct chunk *, cregion_from_const_chunk)      \
+#define FOR_CREGION_CASTS_WITH_PREDEFINED(DO)                                  \
+    DO(struct region, cregion_from_region)                                     \
+    DO(struct chunk *, cregion_from_const_chunk)                               \
+    DO(const struct chunk *, cregion_from_const_chunk)                         \
     FOR_CREGION_CASTS(DO)
 
-#define EXTEND_AS_REGION(type, func) , type: func
+#define EXTEND_AS_REGION(type, func) , type : func
 
-#define as_region(v) _Generic((v)                           \
-    FOR_REGION_CASTS_WITH_PREDEFINED(EXTEND_AS_REGION)      \
-)(v)
+/* clang-format off */
+#define as_region(v)                                                           \
+    _Generic((v)                                                               \
+        FOR_REGION_CASTS_WITH_PREDEFINED(EXTEND_AS_REGION)                     \
+    )(v)
 
-#define as_cregion(v) _Generic((v)                          \
-    FOR_CREGION_CASTS_WITH_PREDEFINED(EXTEND_AS_REGION)     \
-)(v)
+#define as_cregion(v)                                                          \
+    _Generic((v)                                                               \
+        FOR_CREGION_CASTS_WITH_PREDEFINED(EXTEND_AS_REGION)                    \
+    )(v)
+/* clang-format on */
 
 #endif /* MEM_TYPE_CASTS_H */

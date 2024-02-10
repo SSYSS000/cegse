@@ -40,8 +40,6 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-
-
     rc = cengine_savefile_write("written_savefile", save);
     if (rc == -1) {
         eprintf("failed to write file\n");

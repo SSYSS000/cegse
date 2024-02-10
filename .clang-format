@@ -1,0 +1,47 @@
+---
+Language:        Cpp
+AlignAfterOpenBracket: Align
+AlignArrayOfStructures: Left
+AlignEscapedNewlines: Right
+AlignConsecutiveMacros: true
+AlignConsecutiveBitFields: Consecutive
+AlignOperands:   Align
+AlignTrailingComments: true
+AllowAllArgumentsOnNextLine: true
+AllowShortEnumsOnASingleLine: false
+AlwaysBreakAfterDefinitionReturnType: None
+AlwaysBreakAfterReturnType: None
+BinPackParameters: true
+BinPackArguments: true
+BraceWrapping:
+  AfterCaseLabel:  true
+  AfterControlStatement: Never
+  AfterEnum:       false
+  AfterFunction:   true
+  AfterNamespace:  false
+  AfterStruct:     false
+  AfterUnion:      false
+  BeforeElse:      true
+  BeforeWhile:     false
+  IndentBraces:    false
+  SplitEmptyFunction: true
+  SplitEmptyRecord: true
+BreakBeforeBinaryOperators: None
+BreakBeforeBraces: Custom
+ConstructorInitializerIndentWidth: 4
+ContinuationIndentWidth: 4
+Cpp11BracedListStyle: false
+BasedOnStyle:    'Mozilla'
+IndentCaseLabels: false
+IndentCaseBlocks: true
+IndentPPDirectives: None
+IndentWidth:     4
+KeepEmptyLinesAtTheStartOfBlocks: false
+PointerAlignment: Right
+PPIndentWidth:   -1
+SortIncludes: false
+SpaceAroundPointerQualifiers: After
+SpacesInContainerLiterals: false
+TabWidth:        4
+...
+

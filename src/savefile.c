@@ -34,21 +34,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "savefile.h"
 #include "log.h"
 
-#define FOR_REGION_CASTS(DO)                            \
-    DO(struct block *, block_as_region)
-
-#define FOR_CREGION_CASTS(DO)                           \
-    DO(struct block *, const_block_as_cregion)
+#define FOR_REGION_CASTS(DO)  DO(struct block *, block_as_region)
+#define FOR_CREGION_CASTS(DO) DO(struct block *, const_block_as_cregion)
 
 #include "mem_type_casts.h"
 
-#define perror(str)              eprintf("%s:%d: %s: %s\n", __FILE__, __LINE__, str, strerror(errno))
+#define perror(str)                                                            \
+    eprintf("%s:%d: %s: %s\n", __FILE__, __LINE__, str, strerror(errno))
 
-#define TESV_SIGNATURE           "TESV_SAVEGAME"
-#define FO4_SIGNATURE            "FO4_SAVEGAME"
+#define TESV_SIGNATURE "TESV_SAVEGAME"
+#define FO4_SIGNATURE  "FO4_SAVEGAME"
 
-#define REF_TYPE(ref_id)         ((ref_id) >> 22u)
-#define REF_VALUE(ref_id)        ((ref_id) & 0x3FFFFFu)
+#define REF_TYPE(ref_id)  ((ref_id) >> 22u)
+#define REF_VALUE(ref_id) ((ref_id)&0x3FFFFFu)
 
 /*
  * These macros assign ref IDs a type:
@@ -56,18 +54,18 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  * 1 = Regular (reference to Skyrim.esm)
  * 2 = Created (plugin index of 0xFF)
  */
-#define REF_INDEX(val)            (REF_VALUE(val))
-#define REF_REGULAR(val)          (REF_VALUE(val) | (1u << 22u))
-#define REF_CREATED(val)          (REF_VALUE(val) | (2u << 22u))
+#define REF_INDEX(val)   (REF_VALUE(val))
+#define REF_REGULAR(val) (REF_VALUE(val) | (1u << 22u))
+#define REF_CREATED(val) (REF_VALUE(val) | (2u << 22u))
 
-#define REF_IS_INDEX(ref_id)      ((ref_id) != 0u && REF_TYPE(ref_id) == 0u)
-#define REF_IS_REGULAR(ref_id)    ((ref_id) == 0u || REF_TYPE(ref_id) == 1u)
-#define REF_IS_CREATED(ref_id)    (REF_TYPE(ref_id) == 2u)
-#define REF_IS_UNKNOWN(ref_id)    (REF_TYPE(ref_id) == 3u)
+#define REF_IS_INDEX(ref_id)   ((ref_id) != 0u && REF_TYPE(ref_id) == 0u)
+#define REF_IS_REGULAR(ref_id) ((ref_id) == 0u || REF_TYPE(ref_id) == 1u)
+#define REF_IS_CREATED(ref_id) (REF_TYPE(ref_id) == 2u)
+#define REF_IS_UNKNOWN(ref_id) (REF_TYPE(ref_id) == 3u)
 
-#define LOCATION_TABLE_SIZE       100u
+#define LOCATION_TABLE_SIZE 100u
 
-#define VSVAL_MAX                 4194303u
+#define VSVAL_MAX 4194303u
 
 typedef enum cg_err {
     CG_OK = 0,
@@ -84,9 +82,9 @@ enum object_type {
     OBJECT_FILE_HEADER,
     OBJECT_PLUGIN_INFO,
 
-    /* Table 1 (0 - 11) */
-#define FIRST_OBJECT_GLDA              OBJECT_GLDA_MISC_STATS
-#define FIRST_TABLE1_OBJECT_GLDA       OBJECT_GLDA_MISC_STATS
+/* Table 1 (0 - 11) */
+#define FIRST_OBJECT_GLDA        OBJECT_GLDA_MISC_STATS
+#define FIRST_TABLE1_OBJECT_GLDA OBJECT_GLDA_MISC_STATS
     OBJECT_GLDA_MISC_STATS,
     OBJECT_GLDA_PLAYER_LOCATION,
     OBJECT_GLDA_GAME,
@@ -99,8 +97,8 @@ enum object_type {
     OBJECT_GLDA_9,
     OBJECT_GLDA_10,
     OBJECT_GLDA_11,
-    /* Table 2 (100 - 117) */
-#define FIRST_TABLE2_OBJECT_GLDA       OBJECT_GLDA_PROCESS_LISTS
+/* Table 2 (100 - 117) */
+#define FIRST_TABLE2_OBJECT_GLDA OBJECT_GLDA_PROCESS_LISTS
     OBJECT_GLDA_PROCESS_LISTS,
     OBJECT_GLDA_COMBAT,
     OBJECT_GLDA_INTERFACE,
@@ -119,8 +117,8 @@ enum object_type {
     OBJECT_GLDA_115,
     OBJECT_GLDA_116,
     OBJECT_GLDA_117,
-    /* Table 3 (1000 - 1007) */
-#define FIRST_TABLE3_OBJECT_GLDA        OBJECT_GLDA_TEMP_EFFECTS
+/* Table 3 (1000 - 1007) */
+#define FIRST_TABLE3_OBJECT_GLDA OBJECT_GLDA_TEMP_EFFECTS
     OBJECT_GLDA_TEMP_EFFECTS,
     OBJECT_GLDA_PAPYRUS,
     OBJECT_GLDA_ANIM_OBJECTS,
@@ -129,8 +127,8 @@ enum object_type {
     OBJECT_GLDA_MAIN,
     OBJECT_GLDA_1006,
     OBJECT_GLDA_1007,
-#define LAST_OBJECT_GLDA             OBJECT_GLDA_1007
-#define OBJECT_GLDA_TYPE_COUNT       (LAST_OBJECT_GLDA - FIRST_OBJECT_GLDA + 1)
+#define LAST_OBJECT_GLDA       OBJECT_GLDA_1007
+#define OBJECT_GLDA_TYPE_COUNT (LAST_OBJECT_GLDA - FIRST_OBJECT_GLDA + 1)
 
     OBJECT_TYPE_COUNT
 };
@@ -188,89 +186,89 @@ enum change_form_type {
 };
 
 enum change_flags {
-    CHANGE_FORM_FLAGS                             = 0x00000001,
-    CHANGE_CLASS_TAG_SKILLS                       = 0x00000002,
-    CHANGE_FACTION_FLAGS                          = 0x00000002,
-    CHANGE_FACTION_REACTIONS                      = 0x00000004,
-    CHANGE_FACTION_CRIME_COUNTS                   = 0x80000000,
-    CHANGE_TALKING_ACTIVATOR_SPEAKER              = 0x00800000,
-    CHANGE_BOOK_TEACHES                           = 0x00000020,
-    CHANGE_BOOK_READ                              = 0x00000040,
-    CHANGE_DOOR_EXTRA_TELEPORT                    = 0x00020000,
-    CHANGE_INGREDIENT_USE                         = 0x80000000,
-    CHANGE_ACTOR_BASE_DATA                        = 0x00000002,
-    CHANGE_ACTOR_BASE_ATTRIBUTES                  = 0x00000004,
-    CHANGE_ACTOR_BASE_AIDATA                      = 0x00000008,
-    CHANGE_ACTOR_BASE_SPELLLIST                   = 0x00000010,
-    CHANGE_ACTOR_BASE_FULLNAME                    = 0x00000020,
-    CHANGE_ACTOR_BASE_FACTIONS                    = 0x00000040,
-    CHANGE_NPC_SKILLS                             = 0x00000200,
-    CHANGE_NPC_CLASS                              = 0x00000400,
-    CHANGE_NPC_FACE                               = 0x00000800,
-    CHANGE_NPC_DEFAULT_OUTFIT                     = 0x00001000,
-    CHANGE_NPC_SLEEP_OUTFIT                       = 0x00002000,
-    CHANGE_NPC_GENDER                             = 0x01000000,
-    CHANGE_NPC_RACE                               = 0x02000000,
-    CHANGE_LEVELED_LIST_ADDED_OBJECT              = 0x80000000,
-    CHANGE_NOTE_READ                              = 0x80000000,
-    CHANGE_CELL_FLAGS                             = 0x00000002,
-    CHANGE_CELL_FULLNAME                          = 0x00000004,
-    CHANGE_CELL_OWNERSHIP                         = 0x00000008,
-    CHANGE_CELL_EXTERIOR_SHORT                    = 0x10000000,
-    CHANGE_CELL_EXTERIOR_CHAR                     = 0x20000000,
-    CHANGE_CELL_DETACHTIME                        = 0x40000000,
-    CHANGE_CELL_SEENDATA                          = 0x80000000,
-    CHANGE_REFR_MOVE                              = 0x00000002,
-    CHANGE_REFR_HAVOK_MOVE                        = 0x00000004,
-    CHANGE_REFR_CELL_CHANGED                      = 0x00000008,
-    CHANGE_REFR_SCALE                             = 0x00000010,
-    CHANGE_REFR_INVENTORY                         = 0x00000020,
-    CHANGE_REFR_EXTRA_OWNERSHIP                   = 0x00000040,
-    CHANGE_REFR_BASEOBJECT                        = 0x00000080,
-    CHANGE_REFR_PROMOTED                          = 0x02000000,
-    CHANGE_REFR_EXTRA_ACTIVATING_CHILDREN         = 0x04000000,
-    CHANGE_REFR_LEVELED_INVENTORY                 = 0x08000000,
-    CHANGE_REFR_ANIMATION                         = 0x10000000,
-    CHANGE_REFR_EXTRA_ENCOUNTER_ZONE              = 0x20000000,
-    CHANGE_REFR_EXTRA_CREATED_ONLY                = 0x40000000,
-    CHANGE_REFR_EXTRA_GAME_ONLY                   = 0x80000000,
-    CHANGE_ACTOR_LIFESTATE                        = 0x00000400,
-    CHANGE_ACTOR_EXTRA_PACKAGE_DATA               = 0x00000800,
-    CHANGE_ACTOR_EXTRA_MERCHANT_CONTAINER         = 0x00001000,
-    CHANGE_ACTOR_EXTRA_DISMEMBERED_LIMBS          = 0x00020000,
-    CHANGE_ACTOR_LEVELED_ACTOR                    = 0x00040000,
-    CHANGE_ACTOR_DISPOSITION_MODIFIERS            = 0x00080000,
-    CHANGE_ACTOR_TEMP_MODIFIERS                   = 0x00100000,
-    CHANGE_ACTOR_DAMAGE_MODIFIERS                 = 0x00200000,
-    CHANGE_ACTOR_OVERRIDE_MODIFIERS               = 0x00400000,
-    CHANGE_ACTOR_PERMANENT_MODIFIERS              = 0x00800000,
-    CHANGE_OBJECT_EXTRA_ITEM_DATA                 = 0x00000400,
-    CHANGE_OBJECT_EXTRA_AMMO                      = 0x00000800,
-    CHANGE_OBJECT_EXTRA_LOCK                      = 0x00001000,
-    CHANGE_OBJECT_EMPTY                           = 0x00200000,
-    CHANGE_OBJECT_OPEN_DEFAULT_STATE              = 0x00400000,
-    CHANGE_OBJECT_OPEN_STATE                      = 0x00800000,
-    CHANGE_TOPIC_SAIDONCE                         = 0x80000000,
-    CHANGE_QUEST_FLAGS                            = 0x00000002,
-    CHANGE_QUEST_SCRIPT_DELAY                     = 0x00000004,
-    CHANGE_QUEST_ALREADY_RUN                      = 0x04000000,
-    CHANGE_QUEST_INSTANCES                        = 0x08000000,
-    CHANGE_QUEST_RUNDATA                          = 0x10000000,
-    CHANGE_QUEST_OBJECTIVES                       = 0x20000000,
-    CHANGE_QUEST_SCRIPT                           = 0x40000000,
-    CHANGE_QUEST_STAGES                           = 0x80000000,
-    CHANGE_PACKAGE_WAITING                        = 0x40000000,
-    CHANGE_PACKAGE_NEVER_RUN                      = 0x80000000,
-    CHANGE_FORM_LIST_ADDED_FORM                   = 0x80000000,
-    CHANGE_ENCOUNTER_ZONE_FLAGS                   = 0x00000002,
-    CHANGE_ENCOUNTER_ZONE_GAME_DATA               = 0x80000000,
-    CHANGE_LOCATION_KEYWORDDATA                   = 0x40000000,
-    CHANGE_LOCATION_CLEARED                       = 0x80000000,
-    CHANGE_QUEST_NODE_TIME_RUN                    = 0x80000000,
-    CHANGE_RELATIONSHIP_DATA                      = 0x00000002,
-    CHANGE_SCENE_ACTIVE                           = 0x80000000,
-    CHANGE_BASE_OBJECT_VALUE                      = 0x00000002,
-    CHANGE_BASE_OBJECT_FULLNAME                   = 0x00000004
+    CHANGE_FORM_FLAGS = 0x00000001,
+    CHANGE_CLASS_TAG_SKILLS = 0x00000002,
+    CHANGE_FACTION_FLAGS = 0x00000002,
+    CHANGE_FACTION_REACTIONS = 0x00000004,
+    CHANGE_FACTION_CRIME_COUNTS = 0x80000000,
+    CHANGE_TALKING_ACTIVATOR_SPEAKER = 0x00800000,
+    CHANGE_BOOK_TEACHES = 0x00000020,
+    CHANGE_BOOK_READ = 0x00000040,
+    CHANGE_DOOR_EXTRA_TELEPORT = 0x00020000,
+    CHANGE_INGREDIENT_USE = 0x80000000,
+    CHANGE_ACTOR_BASE_DATA = 0x00000002,
+    CHANGE_ACTOR_BASE_ATTRIBUTES = 0x00000004,
+    CHANGE_ACTOR_BASE_AIDATA = 0x00000008,
+    CHANGE_ACTOR_BASE_SPELLLIST = 0x00000010,
+    CHANGE_ACTOR_BASE_FULLNAME = 0x00000020,
+    CHANGE_ACTOR_BASE_FACTIONS = 0x00000040,
+    CHANGE_NPC_SKILLS = 0x00000200,
+    CHANGE_NPC_CLASS = 0x00000400,
+    CHANGE_NPC_FACE = 0x00000800,
+    CHANGE_NPC_DEFAULT_OUTFIT = 0x00001000,
+    CHANGE_NPC_SLEEP_OUTFIT = 0x00002000,
+    CHANGE_NPC_GENDER = 0x01000000,
+    CHANGE_NPC_RACE = 0x02000000,
+    CHANGE_LEVELED_LIST_ADDED_OBJECT = 0x80000000,
+    CHANGE_NOTE_READ = 0x80000000,
+    CHANGE_CELL_FLAGS = 0x00000002,
+    CHANGE_CELL_FULLNAME = 0x00000004,
+    CHANGE_CELL_OWNERSHIP = 0x00000008,
+    CHANGE_CELL_EXTERIOR_SHORT = 0x10000000,
+    CHANGE_CELL_EXTERIOR_CHAR = 0x20000000,
+    CHANGE_CELL_DETACHTIME = 0x40000000,
+    CHANGE_CELL_SEENDATA = 0x80000000,
+    CHANGE_REFR_MOVE = 0x00000002,
+    CHANGE_REFR_HAVOK_MOVE = 0x00000004,
+    CHANGE_REFR_CELL_CHANGED = 0x00000008,
+    CHANGE_REFR_SCALE = 0x00000010,
+    CHANGE_REFR_INVENTORY = 0x00000020,
+    CHANGE_REFR_EXTRA_OWNERSHIP = 0x00000040,
+    CHANGE_REFR_BASEOBJECT = 0x00000080,
+    CHANGE_REFR_PROMOTED = 0x02000000,
+    CHANGE_REFR_EXTRA_ACTIVATING_CHILDREN = 0x04000000,
+    CHANGE_REFR_LEVELED_INVENTORY = 0x08000000,
+    CHANGE_REFR_ANIMATION = 0x10000000,
+    CHANGE_REFR_EXTRA_ENCOUNTER_ZONE = 0x20000000,
+    CHANGE_REFR_EXTRA_CREATED_ONLY = 0x40000000,
+    CHANGE_REFR_EXTRA_GAME_ONLY = 0x80000000,
+    CHANGE_ACTOR_LIFESTATE = 0x00000400,
+    CHANGE_ACTOR_EXTRA_PACKAGE_DATA = 0x00000800,
+    CHANGE_ACTOR_EXTRA_MERCHANT_CONTAINER = 0x00001000,
+    CHANGE_ACTOR_EXTRA_DISMEMBERED_LIMBS = 0x00020000,
+    CHANGE_ACTOR_LEVELED_ACTOR = 0x00040000,
+    CHANGE_ACTOR_DISPOSITION_MODIFIERS = 0x00080000,
+    CHANGE_ACTOR_TEMP_MODIFIERS = 0x00100000,
+    CHANGE_ACTOR_DAMAGE_MODIFIERS = 0x00200000,
+    CHANGE_ACTOR_OVERRIDE_MODIFIERS = 0x00400000,
+    CHANGE_ACTOR_PERMANENT_MODIFIERS = 0x00800000,
+    CHANGE_OBJECT_EXTRA_ITEM_DATA = 0x00000400,
+    CHANGE_OBJECT_EXTRA_AMMO = 0x00000800,
+    CHANGE_OBJECT_EXTRA_LOCK = 0x00001000,
+    CHANGE_OBJECT_EMPTY = 0x00200000,
+    CHANGE_OBJECT_OPEN_DEFAULT_STATE = 0x00400000,
+    CHANGE_OBJECT_OPEN_STATE = 0x00800000,
+    CHANGE_TOPIC_SAIDONCE = 0x80000000,
+    CHANGE_QUEST_FLAGS = 0x00000002,
+    CHANGE_QUEST_SCRIPT_DELAY = 0x00000004,
+    CHANGE_QUEST_ALREADY_RUN = 0x04000000,
+    CHANGE_QUEST_INSTANCES = 0x08000000,
+    CHANGE_QUEST_RUNDATA = 0x10000000,
+    CHANGE_QUEST_OBJECTIVES = 0x20000000,
+    CHANGE_QUEST_SCRIPT = 0x40000000,
+    CHANGE_QUEST_STAGES = 0x80000000,
+    CHANGE_PACKAGE_WAITING = 0x40000000,
+    CHANGE_PACKAGE_NEVER_RUN = 0x80000000,
+    CHANGE_FORM_LIST_ADDED_FORM = 0x80000000,
+    CHANGE_ENCOUNTER_ZONE_FLAGS = 0x00000002,
+    CHANGE_ENCOUNTER_ZONE_GAME_DATA = 0x80000000,
+    CHANGE_LOCATION_KEYWORDDATA = 0x40000000,
+    CHANGE_LOCATION_CLEARED = 0x80000000,
+    CHANGE_QUEST_NODE_TIME_RUN = 0x80000000,
+    CHANGE_RELATIONSHIP_DATA = 0x00000002,
+    CHANGE_SCENE_ACTIVE = 0x80000000,
+    CHANGE_BASE_OBJECT_VALUE = 0x00000002,
+    CHANGE_BASE_OBJECT_FULLNAME = 0x00000004
 };
 
 struct change_form {
@@ -278,15 +276,15 @@ struct change_form {
     uint32_t flags;
     uint32_t type;
     uint32_t version;
-    uint32_t length1;    /* Length of data */
-    uint32_t length2;    /* Non-zero value means data is compressed */
+    uint32_t length1; /* Length of data */
+    uint32_t length2; /* Non-zero value means data is compressed */
     unsigned char *data;
 };
 
 enum compressor {
     NO_COMPRESSION = 0,
-    ZLIB           = 1,
-    LZ4            = 2,
+    ZLIB = 1,
+    LZ4 = 2,
 };
 
 struct psavegame {
@@ -296,7 +294,7 @@ struct psavegame {
      * Fallout 4: 11, 15
      */
     uint32_t file_version;
-    uint8_t  form_version;
+    uint8_t form_version;
 
     /* The original savefile compression algorithm. */
     enum compressor compressor;
@@ -367,7 +365,7 @@ struct block {
     /* The size of the data that buffer points to. */
     unsigned size;
 
-    /* 
+    /*
      * Only if >0, buffer points to compressed data and this denotes
      * the uncompressed size of the data.
      */
@@ -401,49 +399,57 @@ static inline struct cregion const_block_as_cregion(const struct block *block)
     return make_cregion(block->buffer, block->size);
 }
 
-static cg_err_t file_writer(unsigned char *file, size_t *file_size_ptr, const struct savegame *save);
-static cg_err_t file_reader(const unsigned char *file, size_t file_size, struct savegame *save);
+static cg_err_t file_writer(unsigned char *file, size_t *file_size_ptr,
+                            const struct savegame *save);
+static cg_err_t file_reader(const unsigned char *file, size_t file_size,
+                            struct savegame *save);
 
-static cg_err_t serializer(struct block *, const struct savegame *, enum object_type);
-static cg_err_t deserializer(struct block *, struct savegame *, enum object_type);
+static cg_err_t serializer(struct block *block, const struct savegame *save,
+                           enum object_type object_type);
+static cg_err_t deserializer(struct block *block, struct savegame *save,
+                             enum object_type object_type);
 
 /*
  * Compresses block buffer data to a new location _buffer_ and updates the
  * pointer and the size values accordingly. Block buffer will be set to point
  * to the new location.
  */
-static cg_err_t compressor(struct block *, void *buffer, size_t buffer_size, enum compressor);
-static cg_err_t decompressor(struct block *, void *buffer, size_t buffer_size, enum compressor);
+static cg_err_t compressor(struct block *block, void *buffer,
+                           size_t buffer_size, enum compressor compressor);
+static cg_err_t decompressor(struct block *block, void *buffer,
+                             size_t buffer_size, enum compressor compressor);
 
 /*
  * Final step that prepends the block header just before the location pointed
  * to by the block buffer. This means that there must be enough space there
  * for the header. Check with block_header_size().
  */
-static void assembler(const struct block *, struct cursor *);
-static cg_err_t disassembler(struct block *, struct cursor *);
+static void assembler(const struct block *block, struct cursor *cursor);
+static cg_err_t disassembler(struct block *block, struct cursor *cursor);
 
 static void print_locations_table(const struct location_table *t)
 {
     DEBUG_LOG("\n"
-       "+==============================================+\n"
-       "|                Location table                |\n"
-       "+==============================================+\n"
-       "|   %8s    %6s       %-14s    |\n"
-       "| 0x%08x    %6u       %-15s   |\n"
-       "| 0x%08x    %6u       %-15s   |\n"
-       "| 0x%08x    %6u       %-15s   |\n"
-       "| 0x%08x    %6u       %-15s   |\n"
-       "| 0x%08x    %6s       %-15s   |\n"
-       "| 0x%08x    %6s       %-15s   |\n"
-       "+==============================================+\n",
-       "offset", "count", "item",
-       t->off_globals1, t->num_globals1, "Globals 1",
-       t->off_globals2, t->num_globals2, "Globals 2",
-       t->off_change_forms, t->num_change_forms, "Change forms",
-       t->off_globals3, t->num_globals3, "Globals 3",
-       t->off_form_ids_count, "", "Form IDs",
-       t->off_unknown_table, "", "Unknown table"
+              "+==============================================+\n"
+              "|                Location table                |\n"
+              "+==============================================+\n"
+              "|   %8s    %6s       %-14s    |\n"
+              "| 0x%08x    %6u       %-15s   |\n"
+              "| 0x%08x    %6u       %-15s   |\n"
+              "| 0x%08x    %6u       %-15s   |\n"
+              "| 0x%08x    %6u       %-15s   |\n"
+              "| 0x%08x    %6s       %-15s   |\n"
+              "| 0x%08x    %6s       %-15s   |\n"
+              "+==============================================+\n",
+              /* clang-format off */
+              "offset", "count", "item",
+              t->off_globals1, t->num_globals1, "Globals 1",
+              t->off_globals2, t->num_globals2, "Globals 2",
+              t->off_change_forms, t->num_change_forms, "Change forms",
+              t->off_globals3, t->num_globals3, "Globals 3",
+              t->off_form_ids_count, "", "Form IDs",
+              t->off_unknown_table, "", "Unknown table"
+              /* clang-format on */
     );
 }
 
@@ -494,66 +500,70 @@ static inline FILETIME time_to_filetime(time_t t)
 }
 #endif
 
-#define GLDA_TYPE_NUMBER_LIST                           \
-    X(0, OBJECT_GLDA_MISC_STATS)                        \
-    X(1, OBJECT_GLDA_PLAYER_LOCATION)                   \
-    X(2, OBJECT_GLDA_GAME)                              \
-    X(3, OBJECT_GLDA_GLOBAL_VARIABLES)                  \
-    X(4, OBJECT_GLDA_CREATED_OBJECTS)                   \
-    X(5, OBJECT_GLDA_EFFECTS)                           \
-    X(6, OBJECT_GLDA_WEATHER)                           \
-    X(7, OBJECT_GLDA_AUDIO)                             \
-    X(8, OBJECT_GLDA_SKY_CELLS)                         \
-    X(9, OBJECT_GLDA_9)                                 \
-    X(10, OBJECT_GLDA_10)                               \
-    X(11, OBJECT_GLDA_11)                               \
-    X(100, OBJECT_GLDA_PROCESS_LISTS)                   \
-    X(101, OBJECT_GLDA_COMBAT)                          \
-    X(102, OBJECT_GLDA_INTERFACE)                       \
-    X(103, OBJECT_GLDA_ACTOR_CAUSES)                    \
-    X(104, OBJECT_GLDA_104)                             \
-    X(105, OBJECT_GLDA_DETECTION_MANAGER)               \
-    X(106, OBJECT_GLDA_LOCATION_METADATA)               \
-    X(107, OBJECT_GLDA_QUEST_STATIC_DATA)               \
-    X(108, OBJECT_GLDA_STORYTELLER)                     \
-    X(109, OBJECT_GLDA_MAGIC_FAVORITES)                 \
-    X(110, OBJECT_GLDA_PLAYER_CONTROLS)                 \
-    X(111, OBJECT_GLDA_STORY_EVENT_MANAGER)             \
-    X(112, OBJECT_GLDA_INGREDIENT_SHARED)               \
-    X(113, OBJECT_GLDA_MENU_CONTROLS)                   \
-    X(114, OBJECT_GLDA_MENU_TOPIC_MANAGER)              \
-    X(115, OBJECT_GLDA_115)                             \
-    X(116, OBJECT_GLDA_116)                             \
-    X(117, OBJECT_GLDA_117)                             \
-    X(1000, OBJECT_GLDA_TEMP_EFFECTS)                   \
-    X(1001, OBJECT_GLDA_PAPYRUS)                        \
-    X(1002, OBJECT_GLDA_ANIM_OBJECTS)                   \
-    X(1003, OBJECT_GLDA_TIMER)                          \
-    X(1004, OBJECT_GLDA_SYNCHRONISED_ANIMS)             \
-    X(1005, OBJECT_GLDA_MAIN)                           \
-    X(1006, OBJECT_GLDA_1006)                           \
+#define GLDA_TYPE_NUMBER_LIST                                                  \
+    X(0, OBJECT_GLDA_MISC_STATS)                                               \
+    X(1, OBJECT_GLDA_PLAYER_LOCATION)                                          \
+    X(2, OBJECT_GLDA_GAME)                                                     \
+    X(3, OBJECT_GLDA_GLOBAL_VARIABLES)                                         \
+    X(4, OBJECT_GLDA_CREATED_OBJECTS)                                          \
+    X(5, OBJECT_GLDA_EFFECTS)                                                  \
+    X(6, OBJECT_GLDA_WEATHER)                                                  \
+    X(7, OBJECT_GLDA_AUDIO)                                                    \
+    X(8, OBJECT_GLDA_SKY_CELLS)                                                \
+    X(9, OBJECT_GLDA_9)                                                        \
+    X(10, OBJECT_GLDA_10)                                                      \
+    X(11, OBJECT_GLDA_11)                                                      \
+    X(100, OBJECT_GLDA_PROCESS_LISTS)                                          \
+    X(101, OBJECT_GLDA_COMBAT)                                                 \
+    X(102, OBJECT_GLDA_INTERFACE)                                              \
+    X(103, OBJECT_GLDA_ACTOR_CAUSES)                                           \
+    X(104, OBJECT_GLDA_104)                                                    \
+    X(105, OBJECT_GLDA_DETECTION_MANAGER)                                      \
+    X(106, OBJECT_GLDA_LOCATION_METADATA)                                      \
+    X(107, OBJECT_GLDA_QUEST_STATIC_DATA)                                      \
+    X(108, OBJECT_GLDA_STORYTELLER)                                            \
+    X(109, OBJECT_GLDA_MAGIC_FAVORITES)                                        \
+    X(110, OBJECT_GLDA_PLAYER_CONTROLS)                                        \
+    X(111, OBJECT_GLDA_STORY_EVENT_MANAGER)                                    \
+    X(112, OBJECT_GLDA_INGREDIENT_SHARED)                                      \
+    X(113, OBJECT_GLDA_MENU_CONTROLS)                                          \
+    X(114, OBJECT_GLDA_MENU_TOPIC_MANAGER)                                     \
+    X(115, OBJECT_GLDA_115)                                                    \
+    X(116, OBJECT_GLDA_116)                                                    \
+    X(117, OBJECT_GLDA_117)                                                    \
+    X(1000, OBJECT_GLDA_TEMP_EFFECTS)                                          \
+    X(1001, OBJECT_GLDA_PAPYRUS)                                               \
+    X(1002, OBJECT_GLDA_ANIM_OBJECTS)                                          \
+    X(1003, OBJECT_GLDA_TIMER)                                                 \
+    X(1004, OBJECT_GLDA_SYNCHRONISED_ANIMS)                                    \
+    X(1005, OBJECT_GLDA_MAIN)                                                  \
+    X(1006, OBJECT_GLDA_1006)                                                  \
     X(1007, OBJECT_GLDA_1007)
 
 static unsigned glda_type_number(enum object_type type)
 {
-#define X(number, object_type)  case object_type: return number;
+#define X(number, object_type)                                                 \
+    case object_type:                                                          \
+        return number;
     switch (type) {
         GLDA_TYPE_NUMBER_LIST
-        default:
-            assert(0); /* Invalid object type argument. */
-            return 0;
+    default:
+        assert(0); /* Invalid object type argument. */
+        return 0;
     }
 #undef X
 }
 
 static int object_type_from_glda_type_number(int type_number)
 {
-#define X(number, object_type)  case number: return object_type;
+#define X(number, object_type)                                                 \
+    case number:                                                               \
+        return object_type;
     switch (type_number) {
         GLDA_TYPE_NUMBER_LIST
-        default:
-            /* No object type for type_number. */
-            return -1;
+    default:
+        /* No object type for type_number. */
+        return -1;
     }
 #undef X
 }
@@ -581,11 +591,11 @@ static cg_err_t encode_vsval(struct cursor *cursor, uint32_t value)
      *     01       |   2 octets
      *     10       |   3 octets
      */
-    value <<= 2;               /* vsval size information takes 2 bits. */
-    value &= 0xffffffu;        /* vsval max width is 24 bits. */
+    value <<= 2;        /* vsval size information takes 2 bits. */
+    value &= 0xffffffu; /* vsval max width is 24 bits. */
     num_octets = ((value >= 0x100u) << (value >= 0x10000u)) + 1;
-    value |= num_octets - 1;   /* add size information */
-    value = htole32(value);    /* vsval is little endian */
+    value |= num_octets - 1; /* add size information */
+    value = htole32(value);  /* vsval is little endian */
 
     c_store_bytes(cursor, &value, num_octets);
     return CG_OK;
@@ -593,7 +603,7 @@ static cg_err_t encode_vsval(struct cursor *cursor, uint32_t value)
 
 static cg_err_t decode_vsval(struct cursor *cursor, uint32_t *out)
 {
-    uint8_t b[3] = {0};
+    uint8_t b[3] = { 0 };
     int i;
 
     /*
@@ -646,7 +656,8 @@ static cg_err_t c_load_le16_str(struct cursor *cursor, char **string_out)
     return CG_OK;
 }
 
-static void c_store_le16_str(struct cursor *restrict cursor, const char *restrict string)
+static void c_store_le16_str(struct cursor *restrict cursor,
+                             const char *restrict string)
 {
     size_t length = strlen(string);
 
@@ -656,7 +667,8 @@ static void c_store_le16_str(struct cursor *restrict cursor, const char *restric
     c_store_bytes(cursor, string, length);
 }
 
-static cg_err_t read_le16_str_array(struct cursor *cursor, char **array, int length)
+static cg_err_t read_le16_str_array(struct cursor *cursor, char **array,
+                                    int length)
 {
     cg_err_t err = CG_OK;
     int i;
@@ -678,7 +690,8 @@ static cg_err_t read_le16_str_array(struct cursor *cursor, char **array, int len
     return err;
 }
 
-static cg_err_t alloc_and_read_chunk(struct cursor *cursor, struct chunk **chunk_out, size_t length)
+static cg_err_t alloc_and_read_chunk(struct cursor *cursor,
+                                     struct chunk **chunk_out, size_t length)
 {
     struct chunk *chunk;
 
@@ -698,7 +711,8 @@ static cg_err_t alloc_and_read_chunk(struct cursor *cursor, struct chunk **chunk
     return CG_OK;
 }
 
-static void dump_to_file(const char *filename, const void *data, size_t size, long offset)
+static void dump_to_file(const char *filename, const void *data, size_t size,
+                         long offset)
 {
     FILE *fp;
 
@@ -820,11 +834,11 @@ struct savegame *cengine_savefile_read(const char *filename)
     return save;
 }
 
-static cg_err_t
-file_reader(const unsigned char *file, size_t file_size, struct savegame *save)
+static cg_err_t file_reader(const unsigned char *file, size_t file_size,
+                            struct savegame *save)
 {
     struct location_table locations;
-    struct chunk *buffers[1] = {0};
+    struct chunk *buffers[1] = { 0 };
     struct cursor file_cursor;
     struct cursor body_cursor;
     struct cursor *cursor;
@@ -835,19 +849,19 @@ file_reader(const unsigned char *file, size_t file_size, struct savegame *save)
         struct block simple;
         struct block_change_form chfo;
         struct block_global_data glda;
-    } block_buf = {0};
+    } block_buf = { 0 };
     struct block *block = &block_buf.simple;
 
     if (file_size < 300) {
         return CG_CORRUPT;
     }
 
-    file_cursor.pos = (unsigned char *) file;
+    file_cursor.pos = (unsigned char *)file;
     file_cursor.n = file_size;
     cursor = &file_cursor;
 
-    /* Calculates current file offset at cursor position. */
-    #define OFFSET() ((unsigned long)((intptr_t)cursor->pos - offset_var))
+/* Calculates current file offset at cursor position. */
+#define OFFSET() ((unsigned long)((intptr_t)cursor->pos - offset_var))
 
     /*
      * Check the file signature.
@@ -858,11 +872,11 @@ file_reader(const unsigned char *file, size_t file_size, struct savegame *save)
             save->game = SKYRIM;
             c_advance(cursor, strlen(TESV_SIGNATURE));
         }
-        else if(!memcmp(file, FO4_SIGNATURE, strlen(FO4_SIGNATURE))) {
+        else if (!memcmp(file, FO4_SIGNATURE, strlen(FO4_SIGNATURE))) {
             DEBUG_LOG("Fallout 4 file signature detected\n");
             save->game = FALLOUT4;
             c_advance(cursor, strlen(FO4_SIGNATURE));
-            //return CG_UNSUPPORTED;
+            // return CG_UNSUPPORTED;
         }
         else {
             DEBUG_LOG("File not recognized\n");
@@ -903,7 +917,8 @@ file_reader(const unsigned char *file, size_t file_size, struct savegame *save)
         goto out_error;
     }
 
-    DEBUG_LOG("0x%08lx: Reading %u bytes of snapshot data\n", OFFSET(), save->snapshot_size);
+    DEBUG_LOG("0x%08lx: Reading %u bytes of snapshot data\n", OFFSET(),
+              save->snapshot_size);
 
     c_load_bytes(cursor, save->snapshot_data, save->snapshot_size);
 
@@ -948,7 +963,8 @@ file_reader(const unsigned char *file, size_t file_size, struct savegame *save)
 
             /* Decompress. */
             struct cregion src = make_cregion(cursor->pos, compress_size);
-            struct region dest = make_region(buffers[0]->data, buffers[0]->size);
+            struct region dest =
+                make_region(buffers[0]->data, buffers[0]->size);
             DEBUG_LOG("Decompressing save data\n");
             decompress_size = decompress(src, dest);
             if (decompress_size == -1) {
@@ -957,14 +973,15 @@ file_reader(const unsigned char *file, size_t file_size, struct savegame *save)
             }
 
             DEBUG_LOG("Dumping decompressed save data\n");
-            dump_to_file("decompressed_save_data", dest.data, dest.size, OFFSET());
+            dump_to_file("decompressed_save_data", dest.data, dest.size,
+                         OFFSET());
 
             body_cursor.pos = dest.data;
             body_cursor.n = decompress_size;
             offset_var = (intptr_t)body_cursor.pos - (file_cursor.pos - file);
         }
         else {
-            /* 
+            /*
              * No compression required. We will directly write to file, but
              * need to leave 8 bytes of space to store size information.
              */
@@ -1038,8 +1055,9 @@ file_reader(const unsigned char *file, size_t file_size, struct savegame *save)
     DEBUG_LOG("0x%08lx: Reading global data table 1 and 2\n", OFFSET());
 
     block->block_type = BLOCK_GLOBAL_DATA;
-    for(unsigned i = 0; i < locations.num_globals1+locations.num_globals2; ++i) {
-        struct block_global_data *glda = (struct block_global_data *) block;
+    for (unsigned i = 0; i < locations.num_globals1 + locations.num_globals2;
+         ++i) {
+        struct block_global_data *glda = (struct block_global_data *)block;
         int object_type;
 
         err = disassembler(block, cursor);
@@ -1063,13 +1081,15 @@ file_reader(const unsigned char *file, size_t file_size, struct savegame *save)
     /*
      * Read change forms.
      */
-    save->priv->change_forms = calloc(locations.num_change_forms, sizeof(*save->priv->change_forms));
+    save->priv->change_forms =
+        calloc(locations.num_change_forms, sizeof(*save->priv->change_forms));
     if (!save->priv->change_forms) {
         err = CG_NO_MEM;
         goto out_error;
     }
 
-    DEBUG_LOG("0x%08lx: Reading %u change forms\n", OFFSET(), locations.num_change_forms);
+    DEBUG_LOG("0x%08lx: Reading %u change forms\n", OFFSET(),
+              locations.num_change_forms);
 
     block->block_type = BLOCK_CHANGE_FORM;
     for (unsigned i = 0; i < locations.num_change_forms; ++i) {
@@ -1101,8 +1121,8 @@ file_reader(const unsigned char *file, size_t file_size, struct savegame *save)
     DEBUG_LOG("0x%08lx: Reading global data table 3\n", OFFSET());
 
     block->block_type = BLOCK_GLOBAL_DATA;
-    for(unsigned i = 0; i < locations.num_globals3; ++i) {
-        struct block_global_data *glda = (struct block_global_data *) block;
+    for (unsigned i = 0; i < locations.num_globals3; ++i) {
+        struct block_global_data *glda = (struct block_global_data *)block;
         int object_type;
 
         err = disassembler(block, cursor);
@@ -1144,12 +1164,14 @@ file_reader(const unsigned char *file, size_t file_size, struct savegame *save)
     /*
      * Read world spaces.
      */
-    DEBUG_LOG("0x%08lx: Reading %u world spaces\n", OFFSET(), save->num_world_spaces);
+    DEBUG_LOG("0x%08lx: Reading %u world spaces\n", OFFSET(),
+              save->num_world_spaces);
     if (!c_load_le32(cursor, &save->num_world_spaces)) {
         return CG_EOF;
     }
 
-    save->world_spaces = calloc(save->num_world_spaces, sizeof(*save->world_spaces));
+    save->world_spaces =
+        calloc(save->num_world_spaces, sizeof(*save->world_spaces));
     if (!save->world_spaces) {
         err = CG_NO_MEM;
         goto out_error;
@@ -1196,7 +1218,7 @@ static unsigned block_header_size(const struct block *block)
     case BLOCK_GLOBAL_DATA:
         return 8;
     case BLOCK_CHANGE_FORM:
-        cf = (struct block_change_form *) block;
+        cf = (struct block_change_form *)block;
         return 9 + (2 << ((cf->type_num >> 6) & 0x3));
     }
 
@@ -1216,7 +1238,7 @@ static cg_err_t disassembler(struct block *block, struct cursor *cursor)
         break;
 
     case BLOCK_CHANGE_FORM:
-        cf = (struct block_change_form *) block;
+        cf = (struct block_change_form *)block;
         cf->form_id = c_load_be24_or0(cursor);
         cf->flags = c_load_le32_or0(cursor);
         cf->type_num = c_load_u8_or0(cursor);
@@ -1225,7 +1247,7 @@ static cg_err_t disassembler(struct block *block, struct cursor *cursor)
             break;
         }
 
-        /* 
+        /*
          * Two upper bits of type determine the sizes of size information.
          */
         switch ((cf->type_num >> 6) & 0x3) {
@@ -1246,7 +1268,7 @@ static cg_err_t disassembler(struct block *block, struct cursor *cursor)
         }
         break;
     }
-    
+
     /* Unless readed header successfully and block is completely in buffer: */
     if (cursor->n < (long)block->size) {
         /* Bug or corrupt. */
@@ -1260,9 +1282,9 @@ static cg_err_t disassembler(struct block *block, struct cursor *cursor)
     return CG_OK;
 }
 
-__attribute__((unused))
-static cg_err_t decompressor(struct block *block, void *buffer,
-        size_t buffer_size, enum compressor compressor_type)
+__attribute__((unused)) static cg_err_t decompressor(
+    struct block *block, void *buffer, size_t buffer_size,
+    enum compressor compressor_type)
 {
     decompress_fn_t decompress;
     ssize_t decompress_size;
@@ -1278,7 +1300,8 @@ static cg_err_t decompressor(struct block *block, void *buffer,
         return CG_INVAL;
     }
 
-    decompress_size = decompress(as_cregion(block), make_region(buffer, buffer_size));
+    decompress_size =
+        decompress(as_cregion(block), make_region(buffer, buffer_size));
     if (decompress_size == -1) {
         /* Buffer too small? */
         return CG_COMPRESS;
@@ -1297,13 +1320,10 @@ static cg_err_t decompressor(struct block *block, void *buffer,
 static struct chunk *unit_test_file_objects[OBJECT_TYPE_COUNT];
 #endif
 
-static cg_err_t
-deserializer(struct block *block, struct savegame *save, enum object_type object_type)
+static cg_err_t deserializer(struct block *block, struct savegame *save,
+                             enum object_type object_type)
 {
-    struct cursor *cursor = (struct cursor[]) {{
-        block->buffer,
-        block->size
-    }};
+    struct cursor *cursor = &(struct cursor){ block->buffer, block->size };
     cg_err_t err = CG_OK;
 
 #if defined(COMPILE_WITH_UNIT_TESTS)
@@ -1318,7 +1338,8 @@ deserializer(struct block *block, struct savegame *save, enum object_type object
         exit(1);
     }
 
-    memcpy(unit_test_file_objects[object_type]->data, block->buffer, block->size);
+    memcpy(unit_test_file_objects[object_type]->data, block->buffer,
+           block->size);
 #endif
 
     switch (object_type) {
@@ -1330,14 +1351,18 @@ deserializer(struct block *block, struct savegame *save, enum object_type object
 
         save->save_num = c_load_le32_or0(cursor);
         err = c_load_le16_str(cursor, &save->player_name);
-        if (err) break;
+        if (err)
+            break;
         save->level = c_load_le32_or0(cursor);
         err = c_load_le16_str(cursor, &save->player_location_name);
-        if (err) break;
+        if (err)
+            break;
         err = c_load_le16_str(cursor, &save->game_time);
-        if (err) break;
+        if (err)
+            break;
         err = c_load_le16_str(cursor, &save->race_id);
-        if (err) break;
+        if (err)
+            break;
         save->sex = c_load_le16_or0(cursor);
         save->current_xp = c_load_lef32_or0(cursor);
         save->target_xp = c_load_lef32_or0(cursor);
@@ -1357,7 +1382,8 @@ deserializer(struct block *block, struct savegame *save, enum object_type object
             }
 
             if (!(compression_type <= 2)) {
-                DEBUG_LOG("Read an invalid compression type: %u\n", compression_type);
+                DEBUG_LOG("Read an invalid compression type: %u\n",
+                          compression_type);
                 err = CG_CORRUPT;
                 break;
             }
@@ -1365,8 +1391,9 @@ deserializer(struct block *block, struct savegame *save, enum object_type object
             save->priv->compressor = compression_type;
 
             DEBUG_LOG("Save file compression algorithm = %s.\n",
-                      compression_type == LZ4 ? "lz4" :
-                      compression_type == ZLIB ? "zlib" : "none");
+                      compression_type == LZ4    ? "lz4"
+                      : compression_type == ZLIB ? "zlib"
+                                                 : "none");
         }
         else {
             DEBUG_LOG("No save file compression support\n");
@@ -1398,13 +1425,15 @@ deserializer(struct block *block, struct savegame *save, enum object_type object
                 break;
             }
 
-            save->light_plugins = calloc(save->num_light_plugins, sizeof(*save->light_plugins));
+            save->light_plugins =
+                calloc(save->num_light_plugins, sizeof(*save->light_plugins));
             if (!save->light_plugins) {
                 err = CG_NO_MEM;
                 break;
             }
 
-            err = read_le16_str_array(cursor, save->light_plugins, save->num_light_plugins);
+            err = read_le16_str_array(cursor, save->light_plugins,
+                                      save->num_light_plugins);
         }
         break;
 
@@ -1414,7 +1443,8 @@ deserializer(struct block *block, struct savegame *save, enum object_type object
             break;
         }
 
-        save->misc_stats = calloc(save->num_misc_stats, sizeof(*save->misc_stats));
+        save->misc_stats =
+            calloc(save->num_misc_stats, sizeof(*save->misc_stats));
         if (!save->misc_stats) {
             err = CG_NO_MEM;
             break;
@@ -1427,21 +1457,22 @@ deserializer(struct block *block, struct savegame *save, enum object_type object
             }
 
             save->misc_stats[i].category = c_load_u8_or0(cursor);
-            save->misc_stats[i].value    = c_load_le32_or0(cursor);
+            save->misc_stats[i].value = c_load_le32_or0(cursor);
         }
         break;
 
     case OBJECT_GLDA_PLAYER_LOCATION:
         save->player_location.next_object_id = c_load_le32_or0(cursor);
-        save->player_location.world_space1   = c_load_be24_or0(cursor);
-        save->player_location.coord_x        = (int32_t)c_load_le32_or0(cursor);
-        save->player_location.coord_y        = (int32_t)c_load_le32_or0(cursor);
-        save->player_location.world_space2   = c_load_be24_or0(cursor);
-        save->player_location.pos_x          = c_load_lef32_or0(cursor);
-        save->player_location.pos_y          = c_load_lef32_or0(cursor);
-        save->player_location.pos_z          = c_load_lef32_or0(cursor);
+        save->player_location.world_space1 = c_load_be24_or0(cursor);
+        save->player_location.coord_x = (int32_t)c_load_le32_or0(cursor);
+        save->player_location.coord_y = (int32_t)c_load_le32_or0(cursor);
+        save->player_location.world_space2 = c_load_be24_or0(cursor);
+        save->player_location.pos_x = c_load_lef32_or0(cursor);
+        save->player_location.pos_y = c_load_lef32_or0(cursor);
+        save->player_location.pos_z = c_load_lef32_or0(cursor);
         if (save->game == SKYRIM) {
-            save->player_location.unknown    = c_load_u8_or0(cursor); /* Skyrim only */
+            save->player_location.unknown =
+                c_load_u8_or0(cursor); /* Skyrim only */
         }
         break;
 
@@ -1451,7 +1482,8 @@ deserializer(struct block *block, struct savegame *save, enum object_type object
             break;
         }
 
-        save->global_vars = calloc(save->num_global_vars, sizeof(*save->global_vars));
+        save->global_vars =
+            calloc(save->num_global_vars, sizeof(*save->global_vars));
         if (!save->global_vars) {
             err = CG_NO_MEM;
             break;
@@ -1459,25 +1491,25 @@ deserializer(struct block *block, struct savegame *save, enum object_type object
 
         for (uint32_t i = 0u; i < save->num_global_vars; ++i) {
             save->global_vars[i].form_id = c_load_be24_or0(cursor);
-            save->global_vars[i].value   = c_load_lef32_or0(cursor);
+            save->global_vars[i].value = c_load_lef32_or0(cursor);
         }
         break;
 
     case OBJECT_GLDA_WEATHER:
-        save->weather.climate      = c_load_be24_or0(cursor);
-        save->weather.weather      = c_load_be24_or0(cursor);
+        save->weather.climate = c_load_be24_or0(cursor);
+        save->weather.weather = c_load_be24_or0(cursor);
         save->weather.prev_weather = c_load_be24_or0(cursor);
         save->weather.unk_weather1 = c_load_be24_or0(cursor);
         save->weather.unk_weather2 = c_load_be24_or0(cursor);
         save->weather.regn_weather = c_load_be24_or0(cursor);
         save->weather.current_time = c_load_lef32_or0(cursor);
-        save->weather.begin_time   = c_load_lef32_or0(cursor);
-        save->weather.weather_pct  = c_load_lef32_or0(cursor);
+        save->weather.begin_time = c_load_lef32_or0(cursor);
+        save->weather.weather_pct = c_load_lef32_or0(cursor);
         for (size_t i = 0u; i < 6; ++i)
             save->weather.data1[i] = c_load_le32_or0(cursor);
-        save->weather.data2        = c_load_lef32_or0(cursor);
-        save->weather.data3        = c_load_le32_or0(cursor);
-        save->weather.flags        = c_load_u8_or0(cursor);
+        save->weather.data2 = c_load_lef32_or0(cursor);
+        save->weather.data3 = c_load_le32_or0(cursor);
+        save->weather.flags = c_load_u8_or0(cursor);
 
         /* Read the remaining bytes. Don't know what they are. */
         if (cursor->n > 0) {
@@ -1486,7 +1518,8 @@ deserializer(struct block *block, struct savegame *save, enum object_type object
                 err = CG_NO_MEM;
                 break;
             }
-            c_load_bytes(cursor, save->weather.data4->data, save->weather.data4->size);
+            c_load_bytes(cursor, save->weather.data4->data,
+                         save->weather.data4->size);
         }
         break;
 
@@ -1496,7 +1529,8 @@ deserializer(struct block *block, struct savegame *save, enum object_type object
             break;
         }
 
-        save->favourites = calloc(save->num_favourites, sizeof(*save->favourites));
+        save->favourites =
+            calloc(save->num_favourites, sizeof(*save->favourites));
         if (!save->favourites) {
             err = CG_NO_MEM;
             break;
@@ -1564,7 +1598,8 @@ deserializer(struct block *block, struct savegame *save, enum object_type object
             slot = &save->priv->globals[object_type - FIRST_OBJECT_GLDA];
 
             if (*slot != NULL) {
-                eprintf("encountered multiple global data of type %u\n", object_type);
+                eprintf("encountered multiple global data of type %u\n",
+                        object_type);
                 err = CG_CORRUPT;
                 break;
             }
@@ -1579,9 +1614,9 @@ deserializer(struct block *block, struct savegame *save, enum object_type object
 
     if (cursor->n < 0) {
         /* Bug or corrupt. */
-        DEBUG_LOG("CG_EOF while deserializing object type %d. "
-                "cursor->n = %lld\n",
-                (int)object_type, cursor->n);
+        DEBUG_LOG("CG_EOF while deserializing object type %u. "
+                  "cursor->n = %lld\n",
+                  object_type, cursor->n);
         return CG_EOF;
     }
 
@@ -1595,13 +1630,11 @@ static void prepare_block(struct block *block, struct cursor *cursor)
     block->buffer_size = cursor->n - header_size;
 }
 
-static cg_err_t
-serializer(struct block *block, const struct savegame *save, enum object_type object_type)
+static cg_err_t serializer(struct block *block, const struct savegame *save,
+                           enum object_type object_type)
 {
-    struct cursor *cursor = (struct cursor[]) {{
-        block->buffer,
-        block->buffer_size
-    }};
+    struct cursor *cursor =
+        &(struct cursor){ block->buffer, block->buffer_size };
     cg_err_t err = CG_OK;
 
     switch (object_type) {
@@ -1642,8 +1675,8 @@ serializer(struct block *block, const struct savegame *save, enum object_type ob
         c_store_le32(cursor, save->num_misc_stats);
         for (uint32_t i = 0u; i < save->num_misc_stats; ++i) {
             c_store_le16_str(cursor, save->misc_stats[i].name);
-            c_store_u8(cursor,       save->misc_stats[i].category);
-            c_store_le32(cursor,     save->misc_stats[i].value);
+            c_store_u8(cursor, save->misc_stats[i].category);
+            c_store_le32(cursor, save->misc_stats[i].value);
         }
         break;
 
@@ -1656,7 +1689,8 @@ serializer(struct block *block, const struct savegame *save, enum object_type ob
         c_store_lef32(cursor, save->player_location.pos_x);
         c_store_lef32(cursor, save->player_location.pos_y);
         c_store_lef32(cursor, save->player_location.pos_z);
-        c_store_u8(cursor, save->player_location.unknown); /* Present in Skyrim savefiles. */
+        /* Present in Skyrim savefiles. */
+        c_store_u8(cursor, save->player_location.unknown);
         break;
 
     case OBJECT_GLDA_GLOBAL_VARIABLES:
@@ -1683,7 +1717,8 @@ serializer(struct block *block, const struct savegame *save, enum object_type ob
         c_store_le32(cursor, save->weather.data3);
         c_store_u8(cursor, save->weather.flags);
         if (save->weather.data4)
-            c_store_bytes(cursor, save->weather.data4->data, save->weather.data4->size);
+            c_store_bytes(cursor, save->weather.data4->data,
+                          save->weather.data4->size);
         break;
 
     case OBJECT_GLDA_MAGIC_FAVORITES:
@@ -1732,8 +1767,8 @@ serializer(struct block *block, const struct savegame *save, enum object_type ob
     case OBJECT_GLDA_1007:
         {
             /*
-            * Unknown global data structure.
-            */
+             * Unknown global data structure.
+             */
             struct chunk *chunk;
 
             chunk = save->priv->globals[object_type - FIRST_OBJECT_GLDA];
@@ -1757,7 +1792,7 @@ serializer(struct block *block, const struct savegame *save, enum object_type ob
     }
 
     if (err) {
-        DEBUG_LOG("error %d at object type %d\n", err, (int)object_type);
+        DEBUG_LOG("error %u at object type %u\n", err, object_type);
         return err;
     }
 
@@ -1766,8 +1801,9 @@ serializer(struct block *block, const struct savegame *save, enum object_type ob
     return CG_OK;
 }
 
-__attribute__((unused)) static cg_err_t
-compressor(struct block *block, void *buffer, size_t buffer_size, enum compressor compressor_type)
+__attribute__((unused)) static cg_err_t compressor(
+    struct block *block, void *buffer, size_t buffer_size,
+    enum compressor compressor_type)
 {
     compress_fn_t compress;
     ssize_t compress_size;
@@ -1783,7 +1819,8 @@ compressor(struct block *block, void *buffer, size_t buffer_size, enum compresso
         return CG_INVAL;
     }
 
-    compress_size = compress(as_cregion(block), make_region(buffer, buffer_size));
+    compress_size =
+        compress(as_cregion(block), make_region(buffer, buffer_size));
     if (compress_size == -1) {
         /* Buffer too small? */
         return CG_COMPRESS;
@@ -1814,7 +1851,7 @@ static void assembler(const struct block *block, struct cursor *cursor)
         break;
 
     case BLOCK_CHANGE_FORM:
-        cf = (struct block_change_form *) block;
+        cf = (struct block_change_form *)block;
         c_store_be24(cursor, cf->form_id);
         c_store_le32(cursor, cf->flags);
         c_store_u8(cursor, cf->type_num);
@@ -1839,22 +1876,23 @@ static void assembler(const struct block *block, struct cursor *cursor)
         }
         break;
     }
-    
+
     assert(cursor->pos == block->buffer);
 
     c_advance(cursor, block->size);
 }
 
-static cg_err_t
-file_writer(unsigned char *file, size_t *file_size_ptr, const struct savegame *save)
+static cg_err_t file_writer(unsigned char *file, size_t *file_size_ptr,
+                            const struct savegame *save)
 {
-    struct location_table locations = {0};
-    struct chunk *buffers[1] = {0}; /* Buffers for compression. */
-    struct cursor file_cursor;  /* Cursor for additions to file. */
-    struct cursor body_cursor;  /* Cursor for additions to body. */
-    struct cursor *cursor;      /* The cursor being used. */
-    intptr_t offset_var = (intptr_t)file; /* Variable for file offset calculation. */
-    size_t max_file_size;       /* Size of 'file' arg for bounds checking. */
+    struct location_table locations = { 0 };
+    struct chunk *buffers[1] = { 0 }; /* Buffers for compression. */
+    struct cursor file_cursor;        /* Cursor for additions to file. */
+    struct cursor body_cursor;        /* Cursor for additions to body. */
+    struct cursor *cursor;            /* The cursor being used. */
+    intptr_t offset_var =
+        (intptr_t)file;   /* Variable for file offset calculation. */
+    size_t max_file_size; /* Size of 'file' arg for bounds checking. */
     unsigned char *ptr_to_locations; /* Points where to write location table. */
     cg_err_t err = CG_OK;
 
@@ -1863,14 +1901,14 @@ file_writer(unsigned char *file, size_t *file_size_ptr, const struct savegame *s
     file_cursor.n = max_file_size;
     cursor = &file_cursor;
 
-    /* Calculates current file offset at cursor position. */
-    #define OFFSET() ((uint32_t)((intptr_t)cursor->pos - offset_var))
+/* Calculates current file offset at cursor position. */
+#define OFFSET() ((uint32_t)((intptr_t)cursor->pos - offset_var))
 
     union {
         struct block simple;
         struct block_change_form chfo;
         struct block_global_data glda;
-    } block_buf = {0};
+    } block_buf = { 0 };
     struct block *block = &block_buf.simple;
 
     /*
@@ -1926,7 +1964,7 @@ file_writer(unsigned char *file, size_t *file_size_ptr, const struct savegame *s
             offset_var = (intptr_t)body_cursor.pos - (file_cursor.pos - file);
         }
         else {
-            /* 
+            /*
              * No compression required. We will directly write to file, but
              * need to leave 8 bytes of space to store size information.
              */
@@ -1945,7 +1983,7 @@ file_writer(unsigned char *file, size_t *file_size_ptr, const struct savegame *s
     cursor = &body_cursor;
 
     c_store_u8(cursor, save->priv->form_version);
-    
+
     /*
      * Write game version string.
      */
@@ -1980,7 +2018,8 @@ file_writer(unsigned char *file, size_t *file_size_ptr, const struct savegame *s
      */
     locations.off_globals1 = OFFSET();
     block->block_type = BLOCK_GLOBAL_DATA;
-    for (enum object_type i = FIRST_TABLE1_OBJECT_GLDA; i < FIRST_TABLE2_OBJECT_GLDA; ++i) {
+    for (enum object_type i = FIRST_TABLE1_OBJECT_GLDA;
+         i < FIRST_TABLE2_OBJECT_GLDA; ++i) {
         block_buf.glda.type_num = glda_type_number(i);
         prepare_block(block, cursor);
         err = serializer(block, save, i);
@@ -1991,7 +2030,6 @@ file_writer(unsigned char *file, size_t *file_size_ptr, const struct savegame *s
             assembler(block, cursor);
             locations.num_globals1++;
         }
-
     }
     err = CG_OK;
 
@@ -1999,7 +2037,8 @@ file_writer(unsigned char *file, size_t *file_size_ptr, const struct savegame *s
      * Write global data table 2.
      */
     locations.off_globals2 = OFFSET();
-    for (enum object_type i = FIRST_TABLE2_OBJECT_GLDA; i < FIRST_TABLE3_OBJECT_GLDA; ++i) {
+    for (enum object_type i = FIRST_TABLE2_OBJECT_GLDA;
+         i < FIRST_TABLE3_OBJECT_GLDA; ++i) {
         block_buf.glda.type_num = glda_type_number(i);
         prepare_block(block, cursor);
         err = serializer(block, save, i);
@@ -2040,7 +2079,8 @@ file_writer(unsigned char *file, size_t *file_size_ptr, const struct savegame *s
      */
     locations.off_globals3 = OFFSET();
     block->block_type = BLOCK_GLOBAL_DATA;
-    for (enum object_type i = FIRST_TABLE3_OBJECT_GLDA; i <= LAST_OBJECT_GLDA; ++i) {
+    for (enum object_type i = FIRST_TABLE3_OBJECT_GLDA; i <= LAST_OBJECT_GLDA;
+         ++i) {
         block_buf.glda.type_num = glda_type_number(i);
         prepare_block(block, cursor);
         err = serializer(block, save, i);
@@ -2076,8 +2116,9 @@ file_writer(unsigned char *file, size_t *file_size_ptr, const struct savegame *s
      */
     locations.off_unknown_table = OFFSET();
     c_store_le32(cursor, save->priv->unknown3->size);
-    c_store_bytes(cursor, save->priv->unknown3->data, save->priv->unknown3->size);
-    
+    c_store_bytes(cursor, save->priv->unknown3->data,
+                  save->priv->unknown3->size);
+
     if (cursor->n < 0) {
         err = CG_EOF;
         goto out_error;
@@ -2148,7 +2189,8 @@ out_error:
 #undef OFFSET
 }
 
-int cengine_savefile_write(const char *filename, const struct savegame *savegame)
+int cengine_savefile_write(const char *filename,
+                           const struct savegame *savegame)
 {
     size_t max_file_size;
     size_t file_size;
@@ -2264,7 +2306,7 @@ void savegame_free(struct savegame *save)
     }
 
     if (private->change_forms) {
-        for(i = 0; i < private->n_change_forms; ++i) {
+        for (i = 0; i < private->n_change_forms; ++i) {
             free(private->change_forms[i].data);
         }
 
@@ -2278,18 +2320,22 @@ void savegame_free(struct savegame *save)
 
 #if defined(COMPILE_WITH_UNIT_TESTS)
 
-#define TEST_SUITE(TEST_CASE)                                   \
-    TEST_CASE(vsval_encoding)                                   \
-    TEST_CASE(vsval_decoding)                                   \
-    TEST_CASE(serialize_deserialized_objects_test)              \
-    TEST_CASE(read_and_write_sample_files_back_identically)     \
+#define TEST_SUITE(TEST_CASE)                                                  \
+    TEST_CASE(vsval_encoding)                                                  \
+    TEST_CASE(vsval_decoding)                                                  \
+    TEST_CASE(serialize_deserialized_objects_test)                             \
+    TEST_CASE(read_and_write_sample_files_back_identically)
 
 #include <dirent.h>
 #include "unit_tests.h"
 
 /* Initialize cursor referred to by C for a new scope. */
-#define with_cursor \
-    for (struct { int i; struct cursor c; } _i = {0, {buffer, BUF_SIZE}}; _i.i < 1; _i.i++)
+#define with_cursor                                                            \
+    for (struct {                                                              \
+             int i;                                                            \
+             struct cursor c;                                                  \
+    } _i = { .c = { buffer, BUF_SIZE } };                                 \
+         _i.i < 1; _i.i++)
 
 /* Reference to cursor. */
 #define C (&_i.c)
@@ -2299,30 +2345,36 @@ void savegame_free(struct savegame *save)
 
 UNIT_TEST(vsval_encoding)
 {
-    enum {BUF_SIZE = 8};
+    enum {
+        BUF_SIZE = 8
+    };
     unsigned char buffer[BUF_SIZE];
 
     /* Encode values that result in 1 byte encoded.. */
-    with_cursor {
+    with_cursor
+    {
         ASSERT_EQ(CG_OK, encode_vsval(C, 0));
         ASSERT_EQ(1, OFFSET);
         ASSERT_EQ(buffer[0], 0);
     }
 
-    with_cursor {
+    with_cursor
+    {
         ASSERT_EQ(CG_OK, encode_vsval(C, 1));
         ASSERT_EQ(1, OFFSET);
         ASSERT_EQ(buffer[0], 0x4);
     }
 
-    with_cursor {
+    with_cursor
+    {
         ASSERT_EQ(CG_OK, encode_vsval(C, 0x3f));
         ASSERT_EQ(1, OFFSET);
         ASSERT_EQ(buffer[0], 0xfc);
     }
 
     /* 2 byte length result. */
-    with_cursor {
+    with_cursor
+    {
         ASSERT_EQ(CG_OK, encode_vsval(C, 0x40));
         ASSERT_EQ(2, OFFSET);
         ASSERT_EQ(buffer[0], 0x1);
@@ -2330,7 +2382,8 @@ UNIT_TEST(vsval_encoding)
     }
 
     /* 3 byte length result. */
-    with_cursor {
+    with_cursor
+    {
         ASSERT_EQ(CG_OK, encode_vsval(C, 0x4000));
         ASSERT_EQ(3, OFFSET);
         ASSERT_EQ(buffer[0], 0x2);
@@ -2339,7 +2392,8 @@ UNIT_TEST(vsval_encoding)
     }
 
     /* Maximum value */
-    with_cursor {
+    with_cursor
+    {
         ASSERT_EQ(CG_OK, encode_vsval(C, VSVAL_MAX));
         ASSERT_EQ(3, OFFSET);
         ASSERT_EQ(buffer[0], 0xfe);
@@ -2348,19 +2402,22 @@ UNIT_TEST(vsval_encoding)
     }
 
     /* One past maximum value */
-    with_cursor {
+    with_cursor
+    {
         ASSERT_EQ(CG_INVAL, encode_vsval(C, VSVAL_MAX + 1));
         ASSERT_EQ(0, OFFSET);
     }
 
     /* Negative integer. */
-    with_cursor {
+    with_cursor
+    {
         ASSERT_EQ(CG_INVAL, encode_vsval(C, -1));
         ASSERT_EQ(0, OFFSET);
     }
 
     /* Buffer overflow testing. */
-    with_cursor {
+    with_cursor
+    {
         c_advance(C, BUF_SIZE);
 
         ASSERT_EQ(CG_OK, encode_vsval(C, 1));
@@ -2373,18 +2430,21 @@ UNIT_TEST(vsval_encoding)
 
 UNIT_TEST(vsval_decoding)
 {
-    enum {BUF_SIZE = 16};
+    enum {
+        BUF_SIZE = 16
+    };
     unsigned char buffer[BUF_SIZE] = {
-        0x0,             /* 0x0 */
+        0x0,              /* 0x0 */
         0x4,              /* 0x1 */
         0xfc,             /* 0x3f */
-        0x2, 0x0, 0x1,   /* 0x4000 */
+        0x2,  0x0,  0x1,  /* 0x4000 */
         0xfe, 0xff, 0xff, /* VSVAL_MAX */
         0xff              /* corrupt */
     };
     uint32_t result;
 
-    with_cursor {
+    with_cursor
+    {
         ASSERT_EQ(CG_OK, decode_vsval(C, &result));
         ASSERT_EQ(0x0, result);
         ASSERT_EQ(OFFSET, 1);
@@ -2426,8 +2486,8 @@ static void for_each_sample_file(void (*callback)(const char *filename))
         char sample_filename[512];
 
         if (dirent->d_type != DT_REG) {
-			continue;
-		}
+            continue;
+        }
 
         sprintf(sample_filename, "../samples/%s", dirent->d_name);
 
@@ -2445,12 +2505,14 @@ static void serialize_deserialized_objects(const char *sample_filename)
     struct savegame *save;
     cg_err_t err;
 
-    enum {BUFFER_SIZE = 8 * 1024 * 1024};
+    enum {
+        BUFFER_SIZE = 8 * 1024 * 1024
+    };
     static unsigned char buffer[BUFFER_SIZE];
 
     struct block block = {
         .buffer = buffer,
-        .buffer_size = BUFFER_SIZE
+        .buffer_size = BUFFER_SIZE,
     };
 
     sample_file = mmap_entire_file_r(sample_filename, &sample_file_size);
@@ -2469,9 +2531,8 @@ static void serialize_deserialized_objects(const char *sample_filename)
             continue;
         }
         ASSERT_EQ(err, CG_OK);
-        ASSERT_EQ_MEM(block.buffer, block.size,
-                unit_test_file_objects[i]->data,
-                unit_test_file_objects[i]->size);
+        ASSERT_EQ_MEM(block.buffer, block.size, unit_test_file_objects[i]->data,
+                      unit_test_file_objects[i]->size);
     }
 
     for (int i = 0; i < OBJECT_TYPE_COUNT; ++i) {
@@ -2521,8 +2582,8 @@ static void check_writer_produces_identical_file(const char *sample_filename)
         dump_to_file(dump_filename, rewritten_file, rewritten_file_size, 0);
     }
 
-    ASSERT_EQ_MEM(sample_file, sample_file_size,
-            rewritten_file, rewritten_file_size);
+    ASSERT_EQ_MEM(sample_file, sample_file_size, rewritten_file,
+                  rewritten_file_size);
 
     munmap(sample_file, sample_file_size);
     free(rewritten_file);

@@ -34,8 +34,8 @@ struct chunk {
  * the size thereof.
  */
 struct region {
-	void *data;
-	size_t size;
+    void *data;
+    size_t size;
 };
 
 /* Like the region struct but with const qualified data pointer. */
@@ -44,28 +44,28 @@ struct cregion {
     size_t size;
 };
 
-/* 
+/*
  * Macros to help pass the data and the size of a region as arguments to
  * a function or a macro.
  */
-#define REGION_AS_PARAMS(r) r.data, r.size
+#define REGION_AS_PARAMS(r)   r.data, r.size
 #define CREGION_AS_PARAMS(cr) REGION_AS_PARAMS(cr)
 
 /* Make a new region object. */
 static inline struct region make_region(void *data, size_t size)
 {
-    return (struct region) {
+    return (struct region){
         .size = size,
-        .data = data
+        .data = data,
     };
 }
 
 /* Make a new cregion object. */
 static inline struct cregion make_cregion(const void *data, size_t size)
 {
-    return (struct cregion) {
+    return (struct cregion){
         .size = size,
-        .data = data
+        .data = data,
     };
 }
 

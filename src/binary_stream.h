@@ -24,10 +24,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 struct cursor {
     unsigned char *pos;
 
-    /* 
+    /*
      * When n > 0, n denotes the distance to the end from the current
      * position pos.
-     * 
+     *
      * When n == 0, the position points to the end.
      *
      * When n < 0, the cursor is out of bounds and n denotes how many bytes
@@ -82,7 +82,7 @@ void c_store_le32(struct cursor *c, uint32_t value);
 void c_store_le64(struct cursor *c, uint64_t value);
 void c_store_lef32(struct cursor *c, float value);
 
-/* 
+/*
  * These functions load a value from the current position to dest.
  * On success, return nonzero value.
  */
@@ -105,24 +105,24 @@ uint32_t c_load_le32_or0(struct cursor *cursor);
 uint64_t c_load_le64_or0(struct cursor *cursor);
 float c_load_lef32_or0(struct cursor *cursor);
 
-static inline size_t
-write_bytes(FILE *restrict stream, const void *restrict bytes, size_t n)
+static inline size_t write_bytes(FILE *restrict stream,
+                                 const void *restrict bytes, size_t n)
 {
     return fwrite(bytes, 1, n, stream);
 }
 
-static inline size_t
-read_bytes(FILE *restrict stream, void *restrict bytes, size_t n)
+static inline size_t read_bytes(FILE *restrict stream, void *restrict bytes,
+                                size_t n)
 {
     return fread(bytes, 1, n, stream);
 }
 
-size_t
-write_le16_array(FILE *restrict stream, uint16_t *restrict array, size_t n);
-size_t
-write_le32_array(FILE *restrict stream, uint32_t *restrict array, size_t n);
-size_t
-write_le64_array(FILE *restrict stream, uint64_t *restrict array, size_t n);
+size_t write_le16_array(FILE *restrict stream, uint16_t *restrict array,
+                        size_t n);
+size_t write_le32_array(FILE *restrict stream, uint32_t *restrict array,
+                        size_t n);
+size_t write_le64_array(FILE *restrict stream, uint64_t *restrict array,
+                        size_t n);
 size_t put_u8(FILE *stream, uint8_t value);
 size_t put_le16(FILE *stream, uint16_t value);
 size_t put_le32(FILE *stream, uint32_t value);
@@ -130,12 +130,9 @@ size_t put_le64(FILE *stream, uint64_t value);
 size_t put_be24(FILE *stream, uint32_t value);
 size_t put_lef32(FILE *stream, float value);
 
-size_t
-read_le16_array(FILE *restrict stream, uint16_t *restrict out, size_t n);
-size_t
-read_le32_array(FILE *restrict stream, uint32_t *restrict out, size_t n);
-size_t
-read_le64_array(FILE *restrict stream, uint64_t *restrict out, size_t n);
+size_t read_le16_array(FILE *restrict stream, uint16_t *restrict out, size_t n);
+size_t read_le32_array(FILE *restrict stream, uint32_t *restrict out, size_t n);
+size_t read_le64_array(FILE *restrict stream, uint64_t *restrict out, size_t n);
 
 int get_u8(FILE *restrict stream, uint8_t *restrict out);
 int get_le16(FILE *restrict stream, uint16_t *restrict out);
